@@ -4,6 +4,12 @@
 body {
   font-family: Arial, sans-serif;
   margin: 20px;
+  color: white;
+}
+
+body, button, input {
+  background-color: #202020;
+  color: white;
 }
 
 .container {
@@ -19,6 +25,11 @@ body {
 button {
   padding: 5px 10px;
   margin-right: 5px;
+}
+
+button:hover {
+  cursor: pointer;
+  background-color: #219bc4;
 }
 
 .chord-container {
