@@ -1,5 +1,7 @@
 # guitar-chords
 
+This page lets you search for guitar chords and see them displayed on a guitar neck.
+
 To install dependencies:
 
 ```bash
@@ -9,7 +11,11 @@ bun install
 To run:
 
 ```bash
-bun run index.ts
+bun serve.ts
 ```
 
-This project was created using `bun init` in bun v1.1.37. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+To Build:
+
+```bash
+bun build.ts
+```
