@@ -1,0 +1,16 @@
+{
+  "name": "guitar-chords",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@tombatossals/chords-db": "0.5.1",
+    "svguitar": "2.4.1"
+  }
+}
