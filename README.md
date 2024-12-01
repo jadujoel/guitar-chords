@@ -1,5 +1,7 @@
 # guitar-chords
 
+Live page: https://jadujoel.github.io/guitar-chords/
+
 This page lets you search for guitar chords and see them displayed on a guitar neck.
 
 To install dependencies:
