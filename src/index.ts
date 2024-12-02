@@ -213,10 +213,22 @@ async function App() {
 		// Normalize the root note
 		root = normalizeRootNote(root);
 
-		// Default to 'major' if no suffix is provided
-		const chordType = suffix || "major";
+		// Map shorthand suffixes to full suffixes
+		const suffixMap: { [key: string]: string } = {
+			"": "major", // Default to "major"
+			"m": "minor",
+			"7": "7", // e.g., C7
+			"maj7": "maj7", // e.g., Cmaj7
+			"min7": "min7", // e.g., Cmin7
+			"dim": "dim", // e.g., Cdim
+			"aug": "aug", // e.g., Caug
+			// Add other mappings as needed
+		};
 
-		console.log("Getting chord data for", { root, chordType });
+		// Normalize the suffix using the map
+		const normalizedSuffix = suffixMap[suffix.toLowerCase()] || suffix;
+
+		console.log("Getting chord data for", { root, normalizedSuffix });
 
 		// Retrieve chord variations
 		const chordList = chords[root];
@@ -227,10 +239,10 @@ async function App() {
 
 		// Find the chord with the matching suffix
 		const chord = chordList.find(
-			(c) => c.suffix.toLowerCase() === chordType.toLowerCase(),
+			(c) => c.suffix.toLowerCase() === normalizedSuffix.toLowerCase(),
 		);
 		if (!chord) {
-			console.error(`No chord found for ${root}${chordType}`);
+			console.error(`No chord found for ${root}${normalizedSuffix}`);
 			return null;
 		}
 
@@ -241,7 +253,7 @@ async function App() {
 		// Collect MIDI notes
 		const midiNotes = position.midi;
 
-		// Now map the position data to the format expected by svguitar
+		// Map the position data to the format expected by svguitar
 		const fingers: Finger[] = [];
 		const mutedStrings: number[] = [];
 		const baseFret = position.baseFret;

@@ -2,7 +2,7 @@ export async function build() {
   const output = await Bun.build({
     entrypoints: ["src/index.js"],
     outdir: "dist",
-    minify: false,
+    minify: true,
     sourcemap: 'inline',
   })
 
