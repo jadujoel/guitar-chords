@@ -401,3 +401,110 @@ body {
     justify-content: center;
   }
 }
+
+/* ── Chord Playing State ── */
+.chord.playing {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.25), 0 4px 24px rgba(0, 0, 0, 0.35);
+  background: #1c1a2a;
+}
+
+/* ── Drag & Drop ── */
+.chord[draggable="true"] {
+  cursor: grab;
+}
+
+.chord[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.chord.dragging {
+  opacity: 0.35;
+  border-style: dashed;
+}
+
+.chord.drag-over {
+  border-color: #a78bfa;
+  background: #1e1b2e;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+}
+
+/* ── Active (loop) button ── */
+.btn.active {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+/* ── BPM control ── */
+.bpm-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  background: #1a1a1e;
+  border: 1px solid #27272a;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+}
+
+.bpm-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #71717a;
+  user-select: none;
+}
+
+.bpm-input {
+  width: 54px;
+  padding: 0.1875rem 0.375rem;
+  background: #0f0f0f;
+  border: 1px solid #27272a;
+  border-radius: 0.375rem;
+  color: #e4e4e7;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.bpm-input:focus {
+  border-color: #a78bfa;
+}
+
+/* Remove number spinners */
+.bpm-input::-webkit-outer-spin-button,
+.bpm-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bpm-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ── Toast notification ── */
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(0.75rem);
+  padding: 0.625rem 1.25rem;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 0.5rem;
+  color: #e4e4e7;
+  font-size: 0.875rem;
+  font-family: inherit;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 100;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.toast.toast-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

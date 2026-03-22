@@ -1,7 +1,7 @@
 // src/index.ts
 
 import { chords as untypedChords } from "@tombatossals/chords-db/lib/guitar.json";
-import { Download, Music, Pencil, Play, Plus, Upload, X } from "lucide";
+import { Download, Link, Music, Pencil, Play, Plus, Repeat2, Square, Upload, X } from "lucide";
 import type { IconNode } from "lucide";
 import { type Finger, SVGuitarChord } from "svguitar";
 
@@ -44,11 +44,7 @@ for (let i = 0; i < 128; i++) {
 }
 
 /** Generate a synthetic reverb impulse response */
-function createReverbImpulse(
-	ctx: AudioContext,
-	duration: number,
-	decay: number,
-): AudioBuffer {
+function createReverbImpulse(ctx: AudioContext, duration: number, decay: number): AudioBuffer {
 	const length = ctx.sampleRate * duration;
 	const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
 	for (let ch = 0; ch < 2; ch++) {
@@ -107,8 +103,7 @@ const allChordNames: string[] = [];
 for (const [root, chordList] of Object.entries(chords)) {
 	const displayRoot = root.replace("sharp", "#");
 	for (const chord of chordList) {
-		const name =
-			chord.suffix === "major" ? displayRoot : `${displayRoot}${chord.suffix}`;
+		const name = chord.suffix === "major" ? displayRoot : `${displayRoot}${chord.suffix}`;
 		allChordNames.push(name);
 	}
 }
@@ -150,6 +145,13 @@ async function App() {
 
 	// Application State
 	let chordsState: ChordItem[] = [];
+	// Progression playback state
+	let isPlaying = false;
+	let loopEnabled = false;
+	let bpm = 80;
+	const beatsPerChord = 4;
+	let playbackTimeout: ReturnType<typeof setTimeout> | null = null;
+	let playbackIndex = 0;
 	window.addEventListener("beforeunload", saveState);
 
 	// Get reference to the root element
@@ -287,11 +289,47 @@ async function App() {
 	fileInput.type = "file";
 	fileInput.accept = ".json";
 	fileInput.style.display = "none";
-	fileInput.addEventListener("change", (e) =>
-		loadFile(e as unknown as LoadFileEvent),
-	);
+	fileInput.addEventListener("change", (e) => loadFile(e as unknown as LoadFileEvent));
 	loadLabel.appendChild(fileInput);
 	toolbar.appendChild(loadLabel);
+
+	// Play All / Stop button
+	const playAllBtn = document.createElement("button");
+	playAllBtn.className = "btn";
+	playAllBtn.appendChild(icon(Play, 16));
+	playAllBtn.appendChild(document.createTextNode("Play All"));
+	toolbar.appendChild(playAllBtn);
+
+	// Loop toggle button
+	const loopBtn = document.createElement("button");
+	loopBtn.className = "btn";
+	loopBtn.title = "Loop progression";
+	loopBtn.appendChild(icon(Repeat2, 16));
+	loopBtn.appendChild(document.createTextNode("Loop"));
+	toolbar.appendChild(loopBtn);
+
+	// BPM control
+	const bpmWrapper = document.createElement("div");
+	bpmWrapper.className = "bpm-wrapper";
+	const bpmLabel = document.createElement("span");
+	bpmLabel.className = "bpm-label";
+	bpmLabel.textContent = "BPM";
+	const bpmInput = document.createElement("input");
+	bpmInput.type = "number";
+	bpmInput.className = "bpm-input";
+	bpmInput.min = "20";
+	bpmInput.max = "300";
+	bpmInput.value = String(bpm);
+	bpmWrapper.appendChild(bpmLabel);
+	bpmWrapper.appendChild(bpmInput);
+	toolbar.appendChild(bpmWrapper);
+
+	// Share button
+	const shareBtn = document.createElement("button");
+	shareBtn.className = "btn";
+	shareBtn.appendChild(icon(Link, 16));
+	shareBtn.appendChild(document.createTextNode("Share"));
+	toolbar.appendChild(shareBtn);
 
 	container.appendChild(toolbar);
 
@@ -359,7 +397,50 @@ async function App() {
 		svgContainer.className = "svg-container";
 		chordElement.appendChild(svgContainer);
 
-		return { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow };
+		// Drag & drop reordering
+		chordElement.draggable = true;
+		chordElement.addEventListener("dragstart", (e) => {
+			const index = chordsState.indexOf(chordItem);
+			e.dataTransfer?.setData("text/plain", String(index));
+			if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+			// defer so the drag image captures the normal (non-dimmed) state
+			setTimeout(() => chordElement.classList.add("dragging"), 0);
+		});
+		chordElement.addEventListener("dragend", () => {
+			chordElement.classList.remove("dragging");
+		});
+		chordElement.addEventListener("dragover", (e) => {
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+			chordElement.classList.add("drag-over");
+		});
+		chordElement.addEventListener("dragleave", (e) => {
+			if (!chordElement.contains(e.relatedTarget as Node)) {
+				chordElement.classList.remove("drag-over");
+			}
+		});
+		chordElement.addEventListener("drop", (e) => {
+			e.preventDefault();
+			chordElement.classList.remove("drag-over");
+			const fromIndex = Number.parseInt(e.dataTransfer?.getData("text/plain") ?? "", 10);
+			const toIndex = chordsState.indexOf(chordItem);
+			if (!Number.isNaN(fromIndex) && fromIndex !== toIndex) {
+				const [moved] = chordsState.splice(fromIndex, 1);
+				chordsState.splice(toIndex, 0, moved);
+				renderChords();
+				saveState();
+			}
+		});
+
+		return {
+			chordElement,
+			svgContainer,
+			variationSelector,
+			playBtn,
+			replaceBtn,
+			chordTitle,
+			topRow,
+		};
 	}
 
 	function normalizeRootNote(note: string): string {
@@ -431,9 +512,7 @@ async function App() {
 		}
 
 		// Find the chord with the matching suffix
-		const chord = chordList.find(
-			(c) => c.suffix.toLowerCase() === normalizedSuffix.toLowerCase(),
-		);
+		const chord = chordList.find((c) => c.suffix.toLowerCase() === normalizedSuffix.toLowerCase());
 		if (!chord) {
 			console.error(`No chord found for ${root}${normalizedSuffix}`);
 			return null;
@@ -462,9 +541,7 @@ async function App() {
 				fingers.push([
 					string,
 					fret,
-					position.fingers[index] > 0
-						? position.fingers[index].toString()
-						: undefined,
+					position.fingers[index] > 0 ? position.fingers[index].toString() : undefined,
 				]);
 			}
 		});
@@ -503,15 +580,19 @@ async function App() {
 
 		for (const chordItem of chordsState) {
 			console.log("Rendering chord:", chordItem.name);
-			const { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow } =
-				createChordElement(chordItem);
+			const {
+				chordElement,
+				svgContainer,
+				variationSelector,
+				playBtn,
+				replaceBtn,
+				chordTitle,
+				topRow,
+			} = createChordElement(chordItem);
 			chordContainer.appendChild(chordElement);
 
 			// Get chord data from the chord library
-			const chordResult = getChordData(
-				chordItem.name,
-				chordItem.variationIndex,
-			);
+			const chordResult = getChordData(chordItem.name, chordItem.variationIndex);
 
 			if (chordResult) {
 				const { chordData, totalVariations, midiNotes } = chordResult;
@@ -530,10 +611,7 @@ async function App() {
 
 				// Handle variation change
 				variationSelector.addEventListener("change", (event) => {
-					const newIndex = Number.parseInt(
-						(event.target as HTMLSelectElement).value,
-						10,
-					);
+					const newIndex = Number.parseInt((event.target as HTMLSelectElement).value, 10);
 					chordItem.variationIndex = newIndex;
 					renderChords();
 					saveState();
@@ -559,9 +637,20 @@ async function App() {
 				enterReplaceMode(chordItem, chordTitle, topRow);
 			};
 		}
+
+		// Re-apply playing highlight if progression is active
+		if (isPlaying && playbackIndex > 0) {
+			const highlightIndex = (playbackIndex - 1) % chordsState.length;
+			const cards = chordContainer.querySelectorAll(".chord");
+			cards[highlightIndex]?.classList.add("playing");
+		}
 	}
 
-	function enterReplaceMode(chordItem: ChordItem, chordTitle: HTMLSpanElement, topRow: HTMLDivElement) {
+	function enterReplaceMode(
+		chordItem: ChordItem,
+		chordTitle: HTMLSpanElement,
+		topRow: HTMLDivElement,
+	) {
 		// Hide chord name, show inline input
 		chordTitle.style.display = "none";
 		const actions = topRow.querySelector(".chord-top-actions") as HTMLElement;
@@ -700,6 +789,144 @@ async function App() {
 		};
 	}
 
+	// ── Chord Progression Playback ──────────────────────────────────────────
+
+	function updatePlayAllBtn() {
+		playAllBtn.innerHTML = "";
+		if (isPlaying) {
+			playAllBtn.appendChild(icon(Square, 16));
+			playAllBtn.appendChild(document.createTextNode("Stop"));
+		} else {
+			playAllBtn.appendChild(icon(Play, 16));
+			playAllBtn.appendChild(document.createTextNode("Play All"));
+		}
+	}
+
+	function updateLoopBtn() {
+		loopBtn.classList.toggle("active", loopEnabled);
+	}
+
+	function stopProgression() {
+		isPlaying = false;
+		if (playbackTimeout !== null) {
+			clearTimeout(playbackTimeout);
+			playbackTimeout = null;
+		}
+		playbackIndex = 0;
+		chordContainer
+			.querySelectorAll(".chord.playing")
+			.forEach((el) => el.classList.remove("playing"));
+		updatePlayAllBtn();
+	}
+
+	function tickPlayback() {
+		if (!isPlaying || chordsState.length === 0) {
+			stopProgression();
+			return;
+		}
+		if (playbackIndex >= chordsState.length) {
+			if (loopEnabled) {
+				playbackIndex = 0;
+			} else {
+				stopProgression();
+				return;
+			}
+		}
+		// Highlight current card
+		const cards = chordContainer.querySelectorAll(".chord");
+		cards.forEach((el, i) => el.classList.toggle("playing", i === playbackIndex));
+
+		// Play the chord audio
+		const item = chordsState[playbackIndex];
+		const result = getChordData(item.name, item.variationIndex);
+		if (result) playChord(result.midiNotes);
+
+		const durationMs = (60 / bpm) * beatsPerChord * 1000;
+		playbackIndex++;
+		playbackTimeout = setTimeout(tickPlayback, durationMs);
+	}
+
+	function startProgression() {
+		if (chordsState.length === 0) return;
+		stopProgression();
+		isPlaying = true;
+		playbackIndex = 0;
+		updatePlayAllBtn();
+		tickPlayback();
+	}
+
+	playAllBtn.addEventListener("click", () => {
+		if (isPlaying) {
+			stopProgression();
+		} else {
+			startProgression();
+		}
+	});
+
+	loopBtn.addEventListener("click", () => {
+		loopEnabled = !loopEnabled;
+		updateLoopBtn();
+	});
+
+	bpmInput.addEventListener("change", () => {
+		const val = Number.parseInt(bpmInput.value, 10);
+		if (!Number.isNaN(val) && val >= 20 && val <= 300) {
+			bpm = val;
+		} else {
+			bpmInput.value = String(bpm);
+		}
+	});
+
+	// ── URL Sharing ─────────────────────────────────────────────────────────
+
+	function showToast(message: string) {
+		const existing = document.querySelector(".toast");
+		if (existing) existing.remove();
+		const toast = document.createElement("div");
+		toast.className = "toast";
+		toast.textContent = message;
+		document.body.appendChild(toast);
+		// Trigger transition
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => toast.classList.add("toast-visible"));
+		});
+		setTimeout(() => {
+			toast.classList.remove("toast-visible");
+			setTimeout(() => toast.remove(), 300);
+		}, 2200);
+	}
+
+	function shareProgression() {
+		const encoded = chordsState.map((c) => encodeURIComponent(c.name)).join(",");
+		const url = new URL(window.location.href);
+		url.search = "";
+		if (encoded) url.searchParams.set("chords", encoded);
+		navigator.clipboard
+			.writeText(url.toString())
+			.then(() => {
+				showToast("Link copied to clipboard!");
+			})
+			.catch(() => {
+				prompt("Copy this link:", url.toString());
+			});
+	}
+
+	shareBtn.addEventListener("click", shareProgression);
+
+	// ── Load from URL ────────────────────────────────────────────────────────
+
+	function loadFromURL(): boolean {
+		const params = new URLSearchParams(window.location.search);
+		const param = params.get("chords");
+		if (!param) return false;
+		const names = param
+			.split(",")
+			.map((n) => decodeURIComponent(n).trim())
+			.filter(Boolean);
+		if (names.length === 0) return false;
+		chordsState = names.map((name) => ({ name, variationIndex: 0 }));
+		return true;
+	}
 	function playChord(midiNotes: number[]) {
 		console.log("Playing chord", midiNotes);
 		if (audioContext.state === "suspended") {
@@ -812,14 +1039,18 @@ async function App() {
 				chordsState = loadedChords;
 				renderChords();
 				saveState();
-			} catch (err) {
+			} catch (_err) {
 				alert("Invalid JSON file");
 			}
 		};
 		reader.readAsText(file);
 	}
 
-	loadState();
+	if (!loadFromURL()) {
+		loadState();
+	} else {
+		renderChords();
+	}
 	return container;
 }
 
