@@ -1,8 +1,8 @@
 // src/index.ts
 
 import { chords as untypedChords } from "@tombatossals/chords-db/lib/guitar.json";
-import { Download, Music, Pencil, Play, Plus, Upload, X } from "lucide";
 import type { IconNode } from "lucide";
+import { Download, Music, Pencil, Play, Plus, Upload, X } from "lucide";
 import { type Finger, SVGuitarChord } from "svguitar";
 
 // Create audio context and player
@@ -359,7 +359,15 @@ async function App() {
 		svgContainer.className = "svg-container";
 		chordElement.appendChild(svgContainer);
 
-		return { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow };
+		return {
+			chordElement,
+			svgContainer,
+			variationSelector,
+			playBtn,
+			replaceBtn,
+			chordTitle,
+			topRow,
+		};
 	}
 
 	function normalizeRootNote(note: string): string {
@@ -503,8 +511,15 @@ async function App() {
 
 		for (const chordItem of chordsState) {
 			console.log("Rendering chord:", chordItem.name);
-			const { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow } =
-				createChordElement(chordItem);
+			const {
+				chordElement,
+				svgContainer,
+				variationSelector,
+				playBtn,
+				replaceBtn,
+				chordTitle,
+				topRow,
+			} = createChordElement(chordItem);
 			chordContainer.appendChild(chordElement);
 
 			// Get chord data from the chord library
@@ -561,7 +576,11 @@ async function App() {
 		}
 	}
 
-	function enterReplaceMode(chordItem: ChordItem, chordTitle: HTMLSpanElement, topRow: HTMLDivElement) {
+	function enterReplaceMode(
+		chordItem: ChordItem,
+		chordTitle: HTMLSpanElement,
+		topRow: HTMLDivElement,
+	) {
 		// Hide chord name, show inline input
 		chordTitle.style.display = "none";
 		const actions = topRow.querySelector(".chord-top-actions") as HTMLElement;
@@ -633,7 +652,9 @@ async function App() {
 		}
 
 		function setReplaceActiveItem(index: number) {
-			const items = Array.from(replaceDropdown.querySelectorAll(".autocomplete-item"));
+			const items = Array.from(
+				replaceDropdown.querySelectorAll(".autocomplete-item"),
+			);
 			for (const item of items) item.classList.remove("active");
 			if (index >= 0 && index < items.length) {
 				items[index].classList.add("active");
@@ -812,7 +833,7 @@ async function App() {
 				chordsState = loadedChords;
 				renderChords();
 				saveState();
-			} catch (err) {
+			} catch {
 				alert("Invalid JSON file");
 			}
 		};
