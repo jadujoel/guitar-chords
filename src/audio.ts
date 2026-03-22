@@ -1,0 +1,341 @@
+/**
+ * Enhanced Audio engine: WebAudioFont chord playback with
+ * strum direction, adjustable speed/volume/reverb, loop, metronome, single-note playback.
+ */
+
+import { createSignal } from "./state";
+
+// ─── Audio Context & Player (lazy initialization) ──────
+let _audioContext: AudioContext | null = null;
+let _player: typeof WebAudioFontPlayer.prototype | null = null;
+let _masterGain: GainNode | null = null;
+let _initialized = false;
+
+function getCtx(): AudioContext {
+	if (!_audioContext) {
+		_audioContext = new AudioContext({ sampleRate: 48000 });
+	}
+	return _audioContext;
+}
+
+function getPlayer(): typeof WebAudioFontPlayer.prototype {
+	if (!_player) {
+		_player = new WebAudioFontPlayer();
+	}
+	return _player;
+}
+
+function ensureInit() {
+	if (_initialized) return;
+	_initialized = true;
+	const ctx = getCtx();
+	const player = getPlayer();
+	const notarget = ctx.createGain();
+	const sf2File = _tone_0250_FluidR3_GM_sf2_file;
+	const sf2FileName = "_tone_0250_FluidR3_GM_sf2_file";
+
+	_masterGain = ctx.createGain();
+	const dryGain = ctx.createGain();
+	const wetGain = ctx.createGain();
+	const convolver = ctx.createConvolver();
+	const compressor = ctx.createDynamicsCompressor();
+
+	_masterGain.gain.value = volumeSignal.get();
+	dryGain.gain.value = 1 - reverbSignal.get();
+	wetGain.gain.value = reverbSignal.get();
+	compressor.threshold.value = -18;
+	compressor.knee.value = 12;
+	compressor.ratio.value = 4;
+
+	convolver.buffer = createReverbImpulse(ctx, 1.8, 3.5);
+
+	_masterGain.connect(dryGain);
+	_masterGain.connect(convolver);
+	convolver.connect(wetGain);
+	dryGain.connect(compressor);
+	wetGain.connect(compressor);
+	compressor.connect(ctx.destination);
+
+	player.loader.decodeAfterLoading(ctx, sf2FileName);
+	for (let i = 0; i < 128; i++) {
+		player.queueWaveTable(ctx, notarget, sf2File, 0, i, 1.5);
+	}
+
+	// React to signal changes
+	volumeSignal.subscribe((v) => {
+		_masterGain?.gain.setValueAtTime(
+			mutedSignal.get() ? 0 : v,
+			ctx.currentTime,
+		);
+	});
+	mutedSignal.subscribe((m) => {
+		_masterGain?.gain.setValueAtTime(
+			m ? 0 : volumeSignal.get(),
+			ctx.currentTime,
+		);
+	});
+	reverbSignal.subscribe((v) => {
+		dryGain.gain.setValueAtTime(1 - v, ctx.currentTime);
+		wetGain.gain.setValueAtTime(v, ctx.currentTime);
+	});
+}
+
+// ─── Audio State (signals for UI binding) ───────────────
+export const volumeSignal = createSignal(0.55);
+export const reverbSignal = createSignal(0.25);
+export const strumSpeedSignal = createSignal(0.03);
+export const mutedSignal = createSignal(false);
+export type StrumDirection = "down" | "up" | "fingerpick" | "arpeggio";
+export const strumDirectionSignal = createSignal<StrumDirection>("down");
+export const loopSignal = createSignal(false);
+export const bpmSignal = createSignal(120);
+
+function createReverbImpulse(
+	ctx: AudioContext,
+	duration: number,
+	decay: number,
+): AudioBuffer {
+	const length = ctx.sampleRate * duration;
+	const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+	for (let ch = 0; ch < 2; ch++) {
+		const data = impulse.getChannelData(ch);
+		for (let i = 0; i < length; i++) {
+			data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** decay;
+		}
+	}
+	return impulse;
+}
+
+export function resumeAudio() {
+	ensureInit();
+	const ctx = getCtx();
+	if (ctx.state === "suspended") {
+		ctx.resume();
+	}
+}
+
+/** Play a single MIDI note (for fretboard clicks) */
+export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
+	ensureInit();
+	const ctx = getCtx();
+	getPlayer().queueWaveTable(
+		ctx,
+		_masterGain!,
+		_tone_0250_FluidR3_GM_sf2_file,
+		ctx.currentTime,
+		midi,
+		duration,
+		velocity,
+	);
+}
+
+/** Play a chord with current strum settings */
+export function playChord(midiNotes: number[]) {
+	ensureInit();
+	const ctx = getCtx();
+	const now = ctx.currentTime;
+	const direction = strumDirectionSignal.get();
+	const baseInterval = strumSpeedSignal.get();
+
+	let orderedNotes: number[];
+	switch (direction) {
+		case "up":
+			orderedNotes = [...midiNotes].reverse();
+			break;
+		case "fingerpick":
+			orderedNotes = fingerpickPattern(midiNotes);
+			break;
+		case "arpeggio":
+			orderedNotes = [...midiNotes];
+			break;
+		default:
+			orderedNotes = [...midiNotes];
+	}
+
+	const interval =
+		direction === "arpeggio" ? 0.2 : baseInterval + Math.random() * 0.02;
+	const duration = direction === "arpeggio" ? 1.0 : 2.5;
+
+	for (let i = 0; i < orderedNotes.length; i++) {
+		const time = now + i * interval;
+		const velocity = 0.65 + Math.random() * 0.35;
+		getPlayer().queueWaveTable(
+			ctx,
+			_masterGain!,
+			_tone_0250_FluidR3_GM_sf2_file,
+			time,
+			orderedNotes[i],
+			duration,
+			velocity,
+		);
+	}
+}
+
+function fingerpickPattern(notes: number[]): number[] {
+	if (notes.length <= 2) return notes;
+	const bass = notes.slice(0, 2);
+	const treble = notes.slice(2);
+	const result: number[] = [];
+	result.push(bass[0]);
+	if (treble.length > 0) result.push(treble[treble.length - 1]);
+	if (treble.length > 1) result.push(treble[0]);
+	if (bass.length > 1) result.push(bass[1]);
+	for (let i = 1; i < treble.length - 1; i++) result.push(treble[i]);
+	return result;
+}
+
+// ─── Loop playback ─────────────────────────────────────
+let loopTimer: ReturnType<typeof setInterval> | null = null;
+let loopNotes: number[] = [];
+
+export function startLoop(midiNotes: number[]) {
+	stopLoop();
+	loopNotes = midiNotes;
+	loopSignal.set(true);
+	playChord(loopNotes);
+	const ms = (60 / bpmSignal.get()) * 4 * 1000;
+	loopTimer = setInterval(() => playChord(loopNotes), ms);
+}
+
+export function stopLoop() {
+	if (loopTimer) {
+		clearInterval(loopTimer);
+		loopTimer = null;
+	}
+	loopSignal.set(false);
+}
+
+// ─── Metronome ─────────────────────────────────────────
+export type TimeSignature = "4/4" | "3/4" | "6/8" | "2/4" | "5/4" | "7/8";
+
+export interface MetronomeState {
+	playing: boolean;
+	bpm: number;
+	timeSignature: TimeSignature;
+	currentBeat: number;
+}
+
+export const metronomeSignal = createSignal<MetronomeState>({
+	playing: false,
+	bpm: 120,
+	timeSignature: "4/4",
+	currentBeat: 0,
+});
+
+let metronomeTimer: ReturnType<typeof setInterval> | null = null;
+let metronomeBeatCallback: ((beat: number, isAccent: boolean) => void) | null =
+	null;
+
+function parseTimeSignature(ts: TimeSignature): {
+	beats: number;
+	subDiv: number;
+} {
+	const [beats, subDiv] = ts.split("/").map(Number);
+	return { beats, subDiv };
+}
+
+function createClickBuffer(
+	ctx: AudioContext,
+	frequency: number,
+	duration: number,
+): AudioBuffer {
+	const length = ctx.sampleRate * duration;
+	const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+	const data = buffer.getChannelData(0);
+	for (let i = 0; i < length; i++) {
+		const t = i / ctx.sampleRate;
+		data[i] = Math.sin(2 * Math.PI * frequency * t) * Math.exp(-t * 40) * 0.5;
+	}
+	return buffer;
+}
+
+let _accentClick: AudioBuffer | null = null;
+let _normalClick: AudioBuffer | null = null;
+
+function playClick(accent: boolean) {
+	ensureInit();
+	const ctx = getCtx();
+	if (!_accentClick) _accentClick = createClickBuffer(ctx, 1200, 0.05);
+	if (!_normalClick) _normalClick = createClickBuffer(ctx, 800, 0.04);
+	const source = ctx.createBufferSource();
+	source.buffer = accent ? _accentClick : _normalClick;
+	const gain = ctx.createGain();
+	gain.gain.value = 0.6;
+	source.connect(gain);
+	gain.connect(ctx.destination);
+	source.start();
+}
+
+export function onMetronomeBeat(cb: (beat: number, isAccent: boolean) => void) {
+	metronomeBeatCallback = cb;
+}
+
+export function startMetronome() {
+	stopMetronome();
+	const state = metronomeSignal.get();
+	const { beats } = parseTimeSignature(state.timeSignature);
+	let currentBeat = 0;
+
+	const tick = () => {
+		const isAccent = currentBeat === 0;
+		playClick(isAccent);
+		metronomeSignal.update((s) => ({ ...s, playing: true, currentBeat }));
+		metronomeBeatCallback?.(currentBeat, isAccent);
+		currentBeat = (currentBeat + 1) % beats;
+	};
+
+	tick();
+	const ms = 60000 / metronomeSignal.get().bpm;
+	metronomeTimer = setInterval(tick, ms);
+	metronomeSignal.update((s) => ({ ...s, playing: true }));
+}
+
+export function stopMetronome() {
+	if (metronomeTimer) {
+		clearInterval(metronomeTimer);
+		metronomeTimer = null;
+	}
+	metronomeSignal.update((s) => ({ ...s, playing: false, currentBeat: 0 }));
+}
+
+export function setMetronomeBpm(bpm: number) {
+	const clamped = Math.max(40, Math.min(240, bpm));
+	metronomeSignal.update((s) => ({ ...s, bpm: clamped }));
+	bpmSignal.set(clamped);
+	if (metronomeSignal.get().playing) startMetronome();
+}
+
+export function setTimeSignature(ts: TimeSignature) {
+	metronomeSignal.update((s) => ({ ...s, timeSignature: ts }));
+	if (metronomeSignal.get().playing) startMetronome();
+}
+
+// ─── Tap Tempo ─────────────────────────────────────────
+const tapTimes: number[] = [];
+
+export function tapTempo(): number {
+	const now = performance.now();
+	tapTimes.push(now);
+	while (tapTimes.length > 8) tapTimes.shift();
+	if (tapTimes.length < 2) return metronomeSignal.get().bpm;
+
+	const lastGap = tapTimes[tapTimes.length - 1] - tapTimes[tapTimes.length - 2];
+	if (lastGap > 2000) {
+		tapTimes.length = 0;
+		tapTimes.push(now);
+		return metronomeSignal.get().bpm;
+	}
+
+	let totalInterval = 0;
+	for (let i = 1; i < tapTimes.length; i++) {
+		totalInterval += tapTimes[i] - tapTimes[i - 1];
+	}
+	const bpm = Math.round(60000 / (totalInterval / (tapTimes.length - 1)));
+	setMetronomeBpm(bpm);
+	return bpm;
+}
+
+export function getAudioContext(): AudioContext {
+	ensureInit();
+	return getCtx();
+}

@@ -1,17 +1,22 @@
 {
-  "name": "guitar-chords",
-  "module": "index.ts",
-  "type": "module",
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "@biomejs/biome": "1.9.4",
-    "@tombatossals/chords-db": "0.5.1",
-    "lucide": "0.577.0",
-    "svguitar": "2.4.1"
-  }
+	"name": "guitar-chords",
+	"module": "index.ts",
+	"type": "module",
+	"scripts": {
+		"lint": "bunx biome lint"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5.0.0"
+	},
+	"dependencies": {
+		"@biomejs/biome": "2.4.8",
+		"@tombatossals/chords-db": "0.5.1",
+		"lucide": "0.577.0",
+		"playwright": "1.58.2",
+		"svguitar": "2.4.1"
+	},
+	"private": true
 }
