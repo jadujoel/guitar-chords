@@ -1,27 +1,22 @@
 // src/index.ts
 
 import { chords as untypedChords } from "@tombatossals/chords-db/lib/guitar.json";
+import { Download, Music, Play, Plus, Upload, X } from "lucide";
+import type { IconNode } from "lucide";
 import { type Finger, SVGuitarChord } from "svguitar";
 
 // Create audio context and player
 const audioContext = new AudioContext({ sampleRate: 48000 });
 const player = new WebAudioFontPlayer();
-const notarget = audioContext.createGain()
-const gain = audioContext.createGain()
-const sf2File = _tone_0340_Aspirin_sf2_file // _tone_0250_Acoustic_Guitar_sf2_file
-const sf2FileName = "_tone_0340_Aspirin_sf2_file" // "0250_Acoustic_Guitar_sf2_file"
+const notarget = audioContext.createGain();
+const gain = audioContext.createGain();
+const sf2File = _tone_0340_Aspirin_sf2_file; // _tone_0250_Acoustic_Guitar_sf2_file
+const sf2FileName = "_tone_0340_Aspirin_sf2_file"; // "0250_Acoustic_Guitar_sf2_file"
 gain.gain.value = 0.3;
 gain.connect(audioContext.destination);
 player.loader.decodeAfterLoading(audioContext, sf2FileName);
 for (let i = 0; i < 128; i++) {
-  player.queueWaveTable(
-    audioContext,
-    notarget,
-    sf2File,
-    0,
-    i,
-    1.5,
-  );
+	player.queueWaveTable(audioContext, notarget, sf2File, 0, i, 1.5);
 }
 
 // Application State Interface
@@ -66,16 +61,51 @@ const chords = untypedChords as Chords;
 console.log("Chords loaded:", chords);
 console.log("Available chord roots:", Object.keys(chords));
 
+// Build flat list of all chord names for autocomplete
+const allChordNames: string[] = [];
+for (const [root, chordList] of Object.entries(chords)) {
+	const displayRoot = root.replace("sharp", "#");
+	for (const chord of chordList) {
+		const name =
+			chord.suffix === "major" ? displayRoot : `${displayRoot}${chord.suffix}`;
+		allChordNames.push(name);
+	}
+}
+
 render();
+
+function icon(iconNode: IconNode, size = 18): SVGSVGElement {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("width", String(size));
+	svg.setAttribute("height", String(size));
+	svg.setAttribute("viewBox", "0 0 24 24");
+	svg.setAttribute("fill", "none");
+	svg.setAttribute("stroke", "currentColor");
+	svg.setAttribute("stroke-width", "2");
+	svg.setAttribute("stroke-linecap", "round");
+	svg.setAttribute("stroke-linejoin", "round");
+	for (const [tag, attrs] of iconNode) {
+		const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+		for (const [k, v] of Object.entries(attrs)) {
+			el.setAttribute(k, String(v));
+		}
+		svg.appendChild(el);
+	}
+	return svg;
+}
 
 async function render() {
 	await App();
 }
 
 async function App() {
-  window.addEventListener("click", () => {
-    audioContext.resume();
-  }, { once: true });
+	window.addEventListener(
+		"click",
+		() => {
+			audioContext.resume();
+		},
+		{ once: true },
+	);
 
 	// Application State
 	let chordsState: ChordItem[] = [];
@@ -91,36 +121,138 @@ async function App() {
 	const container = document.createElement("div");
 	container.className = "container";
 
-	// Heading
+	// Header with icon + title
+	const header = document.createElement("div");
+	header.className = "app-header";
+	header.appendChild(icon(Music, 28));
 	const heading = document.createElement("h1");
 	heading.textContent = "Chord Viewer";
-	container.appendChild(heading);
+	header.appendChild(heading);
+	container.appendChild(header);
 
-	// Input field for chord name
+	// Toolbar
+	const toolbar = document.createElement("div");
+	toolbar.className = "toolbar";
+
+	// Input wrapper for chord name + autocomplete
+	const inputWrapper = document.createElement("div");
+	inputWrapper.className = "input-wrapper";
+
 	const chordInput = document.createElement("input");
 	chordInput.type = "text";
 	chordInput.id = "chord-input";
-	chordInput.placeholder = "Enter chord name (e.g., C, G, Am)";
-	container.appendChild(chordInput);
+	chordInput.placeholder = "Search chords…";
+	chordInput.setAttribute("autocomplete", "off");
+	inputWrapper.appendChild(chordInput);
+
+	const dropdown = document.createElement("div");
+	dropdown.className = "autocomplete-list";
+	inputWrapper.appendChild(dropdown);
+
+	toolbar.appendChild(inputWrapper);
+
+	let activeIndex = -1;
+
+	function showDropdown(filter: string) {
+		dropdown.innerHTML = "";
+		activeIndex = -1;
+		const q = filter.toLowerCase();
+		const matches = q
+			? allChordNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 50)
+			: allChordNames.slice(0, 50);
+
+		if (matches.length === 0) {
+			dropdown.classList.remove("visible");
+			return;
+		}
+
+		for (const name of matches) {
+			const item = document.createElement("div");
+			item.className = "autocomplete-item";
+			// Split into root + suffix for styling
+			const rootMatch = name.match(/^([A-G][#b]?)(.*)$/);
+			if (rootMatch) {
+				const rootSpan = document.createElement("span");
+				rootSpan.className = "root";
+				rootSpan.textContent = rootMatch[1];
+				item.appendChild(rootSpan);
+				if (rootMatch[2]) {
+					const suffixSpan = document.createElement("span");
+					suffixSpan.className = "suffix";
+					suffixSpan.textContent = rootMatch[2];
+					item.appendChild(suffixSpan);
+				}
+			} else {
+				item.textContent = name;
+			}
+			item.addEventListener("mousedown", (e) => {
+				e.preventDefault(); // prevent blur before click fires
+				chordInput.value = name;
+				hideDropdown();
+				addChord();
+			});
+			dropdown.appendChild(item);
+		}
+		dropdown.classList.add("visible");
+	}
+
+	function hideDropdown() {
+		dropdown.classList.remove("visible");
+		activeIndex = -1;
+	}
+
+	function setActiveItem(index: number) {
+		const items = Array.from(dropdown.querySelectorAll(".autocomplete-item"));
+		for (const item of items) item.classList.remove("active");
+		if (index >= 0 && index < items.length) {
+			items[index].classList.add("active");
+			items[index].scrollIntoView({ block: "nearest" });
+		}
+	}
+
+	chordInput.addEventListener("input", () => {
+		showDropdown(chordInput.value.trim());
+	});
+
+	chordInput.addEventListener("focus", () => {
+		showDropdown(chordInput.value.trim());
+	});
+
+	chordInput.addEventListener("blur", () => {
+		// Small delay so mousedown on item can fire first
+		setTimeout(hideDropdown, 120);
+	});
 
 	// Add Chord Button
 	const addChordBtn = document.createElement("button");
-	addChordBtn.id = "add-chord-btn";
-	addChordBtn.textContent = "Add Chord";
-	container.appendChild(addChordBtn);
+	addChordBtn.className = "btn btn-primary";
+	addChordBtn.appendChild(icon(Plus, 16));
+	addChordBtn.appendChild(document.createTextNode("Add"));
+	toolbar.appendChild(addChordBtn);
 
 	// Save JSON Button
 	const saveJsonBtn = document.createElement("button");
-	saveJsonBtn.id = "save-json-btn";
-	saveJsonBtn.textContent = "Save State as JSON";
-	container.appendChild(saveJsonBtn);
+	saveJsonBtn.className = "btn";
+	saveJsonBtn.appendChild(icon(Download, 16));
+	saveJsonBtn.appendChild(document.createTextNode("Save"));
+	toolbar.appendChild(saveJsonBtn);
 
-	// Load JSON Input
-	const loadJsonInput = document.createElement("input");
-	loadJsonInput.type = "file";
-	loadJsonInput.id = "load-json-input";
-	loadJsonInput.accept = ".json";
-	container.appendChild(loadJsonInput);
+	// Load JSON - file input styled as button
+	const loadLabel = document.createElement("label");
+	loadLabel.className = "file-label";
+	loadLabel.appendChild(icon(Upload, 16));
+	loadLabel.appendChild(document.createTextNode("Load"));
+	const fileInput = document.createElement("input");
+	fileInput.type = "file";
+	fileInput.accept = ".json";
+	fileInput.style.display = "none";
+	fileInput.addEventListener("change", (e) =>
+		loadFile(e as unknown as LoadFileEvent),
+	);
+	loadLabel.appendChild(fileInput);
+	toolbar.appendChild(loadLabel);
+
+	container.appendChild(toolbar);
 
 	// Chord Container
 	const chordContainer = document.createElement("div");
@@ -136,31 +268,41 @@ async function App() {
 		const chordElement = document.createElement("div");
 		chordElement.className = "chord";
 
-		// Remove Button
+		// Top row: chord name + remove button
+		const topRow = document.createElement("div");
+		topRow.className = "chord-top-row";
+
+		const chordTitle = document.createElement("span");
+		chordTitle.className = "chord-name";
+		chordTitle.textContent = chordItem.name;
+		topRow.appendChild(chordTitle);
+
 		const removeBtn = document.createElement("button");
-		removeBtn.textContent = "X";
+		removeBtn.className = "btn btn-remove btn-icon";
+		removeBtn.appendChild(icon(X, 16));
 		removeBtn.onclick = () => {
 			chordsState = chordsState.filter((item) => item.name !== chordItem.name);
 			renderChords();
 			saveState();
 		};
-		chordElement.appendChild(removeBtn);
+		topRow.appendChild(removeBtn);
+		chordElement.appendChild(topRow);
 
-		// Chord Title
-		const chordTitle = document.createElement("p");
-		chordTitle.className = "chord-name";
-		chordTitle.textContent = chordItem.name;
-		chordElement.appendChild(chordTitle);
+		// Controls row: variation selector + play button
+		const controls = document.createElement("div");
+		controls.className = "chord-controls";
 
-		// Variation Selector
 		const variationSelector = document.createElement("select");
 		variationSelector.className = "variation-selector";
-		chordElement.appendChild(variationSelector);
+		controls.appendChild(variationSelector);
 
 		const playBtn = document.createElement("button");
-		playBtn.textContent = "Play";
-		playBtn.className = "play-button";
-		chordElement.appendChild(playBtn);
+		playBtn.className = "btn btn-play";
+		playBtn.appendChild(icon(Play, 14));
+		playBtn.appendChild(document.createTextNode("Play"));
+		controls.appendChild(playBtn);
+
+		chordElement.appendChild(controls);
 
 		const svgContainer = document.createElement("div");
 		svgContainer.className = "svg-container";
@@ -216,12 +358,12 @@ async function App() {
 		// Map shorthand suffixes to full suffixes
 		const suffixMap: { [key: string]: string } = {
 			"": "major", // Default to "major"
-			"m": "minor",
+			m: "minor",
 			"7": "7", // e.g., C7
-			"maj7": "maj7", // e.g., Cmaj7
-			"min7": "min7", // e.g., Cmin7
-			"dim": "dim", // e.g., Cdim
-			"aug": "aug", // e.g., Caug
+			maj7: "maj7", // e.g., Cmaj7
+			min7: "min7", // e.g., Cmin7
+			dim: "dim", // e.g., Cdim
+			aug: "aug", // e.g., Caug
 			// Add other mappings as needed
 		};
 
@@ -296,6 +438,18 @@ async function App() {
 	// Function to render chords
 	function renderChords() {
 		chordContainer.innerHTML = ""; // Clear existing chords
+
+		if (chordsState.length === 0) {
+			const empty = document.createElement("div");
+			empty.className = "empty-state";
+			empty.appendChild(icon(Music, 48));
+			const msg = document.createElement("p");
+			msg.textContent = "No chords yet — type a chord name above and click Add";
+			empty.appendChild(msg);
+			chordContainer.appendChild(empty);
+			return;
+		}
+
 		for (const chordItem of chordsState) {
 			console.log("Rendering chord:", chordItem.name);
 			const { chordElement, svgContainer, variationSelector, playBtn } =
@@ -336,7 +490,7 @@ async function App() {
 
 				// Attach play button event listener
 				playBtn.onclick = () => {
-          playChord(midiNotes);
+					playChord(midiNotes);
 				};
 
 				new SVGuitarChord(svgContainer)
@@ -352,7 +506,7 @@ async function App() {
 	}
 
 	function playChord(midiNotes: number[]) {
-    console.log("Playing chord", midiNotes);
+		console.log("Playing chord", midiNotes);
 		// Ensure audio context is resumed (necessary in some browsers)
 		if (audioContext.state === "suspended") {
 			audioContext.resume();
@@ -395,13 +549,40 @@ async function App() {
 	}
 
 	// Event listener for adding chords
-	addChordBtn.addEventListener("click", () => {
+	function addChord() {
 		const chordName = chordInput.value.trim();
 		if (chordName && !chordsState.some((item) => item.name === chordName)) {
 			chordsState.push({ name: chordName, variationIndex: 0 });
 			chordInput.value = "";
 			renderChords();
 			saveState();
+		}
+	}
+
+	addChordBtn.addEventListener("click", addChord);
+
+	chordInput.addEventListener("keydown", (e) => {
+		const items = dropdown.querySelectorAll(".autocomplete-item");
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			if (!dropdown.classList.contains("visible")) {
+				showDropdown(chordInput.value.trim());
+			}
+			activeIndex = Math.min(activeIndex + 1, items.length - 1);
+			setActiveItem(activeIndex);
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			activeIndex = Math.max(activeIndex - 1, 0);
+			setActiveItem(activeIndex);
+		} else if (e.key === "Enter") {
+			e.preventDefault();
+			if (activeIndex >= 0 && activeIndex < items.length) {
+				chordInput.value = items[activeIndex].textContent || "";
+			}
+			hideDropdown();
+			addChord();
+		} else if (e.key === "Escape") {
+			hideDropdown();
 		}
 	});
 
@@ -417,10 +598,6 @@ async function App() {
 		a.click();
 		URL.revokeObjectURL(url);
 	});
-
-	// Event listener for loading state from JSON file
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	loadJsonInput.addEventListener("change", loadFile as any);
 
 	async function loadFile(event: LoadFileEvent | null) {
 		const file = event?.target?.files?.[0];
