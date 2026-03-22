@@ -149,6 +149,8 @@ async function App() {
 	let isPlaying = false;
 	let loopEnabled = false;
 	let bpm = 80;
+	const MIN_BPM = 20;
+	const MAX_BPM = 300;
 	const beatsPerChord = 4;
 	let playbackTimeout: ReturnType<typeof setTimeout> | null = null;
 	let playbackIndex = 0;
@@ -317,8 +319,8 @@ async function App() {
 	const bpmInput = document.createElement("input");
 	bpmInput.type = "number";
 	bpmInput.className = "bpm-input";
-	bpmInput.min = "20";
-	bpmInput.max = "300";
+	bpmInput.min = String(MIN_BPM);
+	bpmInput.max = String(MAX_BPM);
 	bpmInput.value = String(bpm);
 	bpmWrapper.appendChild(bpmLabel);
 	bpmWrapper.appendChild(bpmInput);
@@ -639,7 +641,7 @@ async function App() {
 		}
 
 		// Re-apply playing highlight if progression is active
-		if (isPlaying && playbackIndex > 0) {
+		if (isPlaying && playbackIndex > 0 && chordsState.length > 0) {
 			const highlightIndex = (playbackIndex - 1) % chordsState.length;
 			const cards = chordContainer.querySelectorAll(".chord");
 			cards[highlightIndex]?.classList.add("playing");
@@ -870,7 +872,7 @@ async function App() {
 
 	bpmInput.addEventListener("change", () => {
 		const val = Number.parseInt(bpmInput.value, 10);
-		if (!Number.isNaN(val) && val >= 20 && val <= 300) {
+		if (!Number.isNaN(val) && val >= MIN_BPM && val <= MAX_BPM) {
 			bpm = val;
 		} else {
 			bpmInput.value = String(bpm);
@@ -886,7 +888,9 @@ async function App() {
 		toast.className = "toast";
 		toast.textContent = message;
 		document.body.appendChild(toast);
-		// Trigger transition
+		// Double rAF: first frame lets the browser register the element and its
+		// initial styles (opacity: 0); second frame triggers the CSS transition
+		// by adding the class — a single rAF is not enough on some engines.
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => toast.classList.add("toast-visible"));
 		});
