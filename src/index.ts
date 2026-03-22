@@ -9,14 +9,55 @@ import { type Finger, SVGuitarChord } from "svguitar";
 const audioContext = new AudioContext({ sampleRate: 48000 });
 const player = new WebAudioFontPlayer();
 const notarget = audioContext.createGain();
+const sf2File = _tone_0250_FluidR3_GM_sf2_file;
+const sf2FileName = "_tone_0250_FluidR3_GM_sf2_file";
+
+// Audio routing: player → gain → dry/wet split → compressor → destination
 const gain = audioContext.createGain();
-const sf2File = _tone_0340_Aspirin_sf2_file; // _tone_0250_Acoustic_Guitar_sf2_file
-const sf2FileName = "_tone_0340_Aspirin_sf2_file"; // "0250_Acoustic_Guitar_sf2_file"
-gain.gain.value = 0.3;
-gain.connect(audioContext.destination);
+const dryGain = audioContext.createGain();
+const wetGain = audioContext.createGain();
+const convolver = audioContext.createConvolver();
+const compressor = audioContext.createDynamicsCompressor();
+
+gain.gain.value = 0.55;
+dryGain.gain.value = 0.75;
+wetGain.gain.value = 0.25;
+compressor.threshold.value = -18;
+compressor.knee.value = 12;
+compressor.ratio.value = 4;
+
+// Build reverb impulse response
+convolver.buffer = createReverbImpulse(audioContext, 1.8, 3.5);
+
+// Route: gain → dry + reverb → compressor → out
+gain.connect(dryGain);
+gain.connect(convolver);
+convolver.connect(wetGain);
+dryGain.connect(compressor);
+wetGain.connect(compressor);
+compressor.connect(audioContext.destination);
+
 player.loader.decodeAfterLoading(audioContext, sf2FileName);
+// Pre-decode all notes
 for (let i = 0; i < 128; i++) {
 	player.queueWaveTable(audioContext, notarget, sf2File, 0, i, 1.5);
+}
+
+/** Generate a synthetic reverb impulse response */
+function createReverbImpulse(
+	ctx: AudioContext,
+	duration: number,
+	decay: number,
+): AudioBuffer {
+	const length = ctx.sampleRate * duration;
+	const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+	for (let ch = 0; ch < 2; ch++) {
+		const data = impulse.getChannelData(ch);
+		for (let i = 0; i < length; i++) {
+			data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** decay;
+		}
+	}
+	return impulse;
 }
 
 // Application State Interface
@@ -507,21 +548,26 @@ async function App() {
 
 	function playChord(midiNotes: number[]) {
 		console.log("Playing chord", midiNotes);
-		// Ensure audio context is resumed (necessary in some browsers)
 		if (audioContext.state === "suspended") {
 			audioContext.resume();
 		}
 
 		const now = audioContext.currentTime;
+		// Strum: stagger notes by 30-50ms each (low to high)
+		const strumInterval = 0.03 + Math.random() * 0.02;
 
-		for (const midiNote of midiNotes) {
+		for (let i = 0; i < midiNotes.length; i++) {
+			const time = now + i * strumInterval;
+			// Humanize velocity slightly per string
+			const velocity = 0.65 + Math.random() * 0.35;
 			player.queueWaveTable(
 				audioContext,
 				gain,
 				sf2File,
-				now,
-				midiNote, // + 1, // not sure why its off by one
-				1.5,
+				time,
+				midiNotes[i],
+				2.5, // longer sustain for natural decay
+				velocity,
 			);
 		}
 	}
