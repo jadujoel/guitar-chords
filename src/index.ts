@@ -1,7 +1,7 @@
 // src/index.ts
 
 import { chords as untypedChords } from "@tombatossals/chords-db/lib/guitar.json";
-import { Download, Music, Play, Plus, Upload, X } from "lucide";
+import { Download, Music, Pencil, Play, Plus, Upload, X } from "lucide";
 import type { IconNode } from "lucide";
 import { type Finger, SVGuitarChord } from "svguitar";
 
@@ -309,7 +309,7 @@ async function App() {
 		const chordElement = document.createElement("div");
 		chordElement.className = "chord";
 
-		// Top row: chord name + remove button
+		// Top row: chord name + action buttons
 		const topRow = document.createElement("div");
 		topRow.className = "chord-top-row";
 
@@ -317,6 +317,15 @@ async function App() {
 		chordTitle.className = "chord-name";
 		chordTitle.textContent = chordItem.name;
 		topRow.appendChild(chordTitle);
+
+		const topActions = document.createElement("div");
+		topActions.className = "chord-top-actions";
+
+		const replaceBtn = document.createElement("button");
+		replaceBtn.className = "btn btn-remove btn-icon";
+		replaceBtn.title = "Replace chord";
+		replaceBtn.appendChild(icon(Pencil, 14));
+		topActions.appendChild(replaceBtn);
 
 		const removeBtn = document.createElement("button");
 		removeBtn.className = "btn btn-remove btn-icon";
@@ -326,7 +335,8 @@ async function App() {
 			renderChords();
 			saveState();
 		};
-		topRow.appendChild(removeBtn);
+		topActions.appendChild(removeBtn);
+		topRow.appendChild(topActions);
 		chordElement.appendChild(topRow);
 
 		// Controls row: variation selector + play button
@@ -349,7 +359,7 @@ async function App() {
 		svgContainer.className = "svg-container";
 		chordElement.appendChild(svgContainer);
 
-		return { chordElement, svgContainer, variationSelector, playBtn };
+		return { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow };
 	}
 
 	function normalizeRootNote(note: string): string {
@@ -493,7 +503,7 @@ async function App() {
 
 		for (const chordItem of chordsState) {
 			console.log("Rendering chord:", chordItem.name);
-			const { chordElement, svgContainer, variationSelector, playBtn } =
+			const { chordElement, svgContainer, variationSelector, playBtn, replaceBtn, chordTitle, topRow } =
 				createChordElement(chordItem);
 			chordContainer.appendChild(chordElement);
 
@@ -543,7 +553,151 @@ async function App() {
 			} else {
 				svgContainer.textContent = "Chord not found";
 			}
+
+			// Replace button: enter inline replace mode
+			replaceBtn.onclick = () => {
+				enterReplaceMode(chordItem, chordTitle, topRow);
+			};
 		}
+	}
+
+	function enterReplaceMode(chordItem: ChordItem, chordTitle: HTMLSpanElement, topRow: HTMLDivElement) {
+		// Hide chord name, show inline input
+		chordTitle.style.display = "none";
+		const actions = topRow.querySelector(".chord-top-actions") as HTMLElement;
+		if (actions) actions.style.display = "none";
+
+		const replaceWrapper = document.createElement("div");
+		replaceWrapper.className = "replace-wrapper";
+
+		const replaceInput = document.createElement("input");
+		replaceInput.type = "text";
+		replaceInput.className = "replace-input";
+		replaceInput.placeholder = "Replace with…";
+		replaceInput.value = "";
+		replaceInput.setAttribute("autocomplete", "off");
+		replaceWrapper.appendChild(replaceInput);
+
+		const replaceDropdown = document.createElement("div");
+		replaceDropdown.className = "autocomplete-list";
+		replaceWrapper.appendChild(replaceDropdown);
+
+		const cancelBtn = document.createElement("button");
+		cancelBtn.className = "btn btn-remove btn-icon";
+		cancelBtn.appendChild(icon(X, 14));
+		replaceWrapper.appendChild(cancelBtn);
+
+		topRow.insertBefore(replaceWrapper, topRow.firstChild);
+		replaceInput.focus();
+
+		let replaceActiveIndex = -1;
+
+		function showReplaceDropdown(filter: string) {
+			replaceDropdown.innerHTML = "";
+			replaceActiveIndex = -1;
+			const q = filter.toLowerCase();
+			const matches = q
+				? allChordNames.filter((n) => n.toLowerCase().includes(q)).slice(0, 50)
+				: allChordNames.slice(0, 50);
+
+			if (matches.length === 0) {
+				replaceDropdown.classList.remove("visible");
+				return;
+			}
+
+			for (const name of matches) {
+				const item = document.createElement("div");
+				item.className = "autocomplete-item";
+				const rootMatch = name.match(/^([A-G][#b]?)(.*)$/);
+				if (rootMatch) {
+					const rootSpan = document.createElement("span");
+					rootSpan.className = "root";
+					rootSpan.textContent = rootMatch[1];
+					item.appendChild(rootSpan);
+					if (rootMatch[2]) {
+						const suffixSpan = document.createElement("span");
+						suffixSpan.className = "suffix";
+						suffixSpan.textContent = rootMatch[2];
+						item.appendChild(suffixSpan);
+					}
+				} else {
+					item.textContent = name;
+				}
+				item.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					commitReplace(name);
+				});
+				replaceDropdown.appendChild(item);
+			}
+			replaceDropdown.classList.add("visible");
+		}
+
+		function setReplaceActiveItem(index: number) {
+			const items = Array.from(replaceDropdown.querySelectorAll(".autocomplete-item"));
+			for (const item of items) item.classList.remove("active");
+			if (index >= 0 && index < items.length) {
+				items[index].classList.add("active");
+				items[index].scrollIntoView({ block: "nearest" });
+			}
+		}
+
+		function commitReplace(newName: string) {
+			if (newName && getChordData(newName, 0)) {
+				chordItem.name = newName;
+				chordItem.variationIndex = 0;
+				renderChords();
+				saveState();
+			}
+		}
+
+		function exitReplaceMode() {
+			replaceWrapper.remove();
+			chordTitle.style.display = "";
+			if (actions) actions.style.display = "";
+		}
+
+		replaceInput.addEventListener("input", () => {
+			showReplaceDropdown(replaceInput.value.trim());
+		});
+
+		replaceInput.addEventListener("focus", () => {
+			showReplaceDropdown(replaceInput.value.trim());
+		});
+
+		replaceInput.addEventListener("blur", () => {
+			setTimeout(() => {
+				replaceDropdown.classList.remove("visible");
+			}, 120);
+		});
+
+		replaceInput.addEventListener("keydown", (e) => {
+			const items = replaceDropdown.querySelectorAll(".autocomplete-item");
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				if (!replaceDropdown.classList.contains("visible")) {
+					showReplaceDropdown(replaceInput.value.trim());
+				}
+				replaceActiveIndex = Math.min(replaceActiveIndex + 1, items.length - 1);
+				setReplaceActiveItem(replaceActiveIndex);
+			} else if (e.key === "ArrowUp") {
+				e.preventDefault();
+				replaceActiveIndex = Math.max(replaceActiveIndex - 1, 0);
+				setReplaceActiveItem(replaceActiveIndex);
+			} else if (e.key === "Enter") {
+				e.preventDefault();
+				if (replaceActiveIndex >= 0 && replaceActiveIndex < items.length) {
+					commitReplace(items[replaceActiveIndex].textContent || "");
+				} else {
+					commitReplace(replaceInput.value.trim());
+				}
+			} else if (e.key === "Escape") {
+				exitReplaceMode();
+			}
+		});
+
+		cancelBtn.onclick = () => {
+			exitReplaceMode();
+		};
 	}
 
 	function playChord(midiNotes: number[]) {
