@@ -76,12 +76,16 @@ async function loadSample(
 	const promise = (async () => {
 		try {
 			const response = await fetch(sampleUrl(folder, noteName));
-			if (!response.ok) return null;
+			if (!response.ok) {
+				console.warn(`Failed to load sample ${key}: HTTP ${response.status}`);
+				return null;
+			}
 			const arrayBuffer = await response.arrayBuffer();
 			const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 			_sampleCache.set(key, audioBuffer);
 			return audioBuffer;
-		} catch {
+		} catch (e) {
+			console.warn(`Failed to decode sample ${key}:`, e);
 			return null;
 		} finally {
 			_loadingPromises.delete(key);
@@ -106,7 +110,7 @@ function getMasterGain(): GainNode {
 
 function getCtx(): AudioContext {
 	if (!_audioContext) {
-		_audioContext = new AudioContext({ sampleRate: 48000 });
+		_audioContext = new AudioContext();
 	}
 	return _audioContext;
 }
@@ -207,11 +211,11 @@ function createReverbImpulse(
 	return impulse;
 }
 
-export function resumeAudio() {
+export async function resumeAudio(): Promise<void> {
 	ensureInit();
 	const ctx = getCtx();
 	if (ctx.state === "suspended") {
-		ctx.resume();
+		await ctx.resume();
 	}
 }
 
@@ -245,8 +249,8 @@ function playSampleAt(
 }
 
 /** Play a single MIDI note (for fretboard clicks) */
-export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
-	resumeAudio();
+export async function playNote(midi: number, duration = 1.5, velocity = 0.7) {
+	await resumeAudio();
 	const ctx = getCtx();
 	const folder = getActiveFolder();
 	const noteName = midiToNoteName(midi);
@@ -259,16 +263,18 @@ export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
 	}
 
 	// Load and play async
+	const startTime = ctx.currentTime;
 	loadSample(ctx, folder, noteName).then((buffer) => {
 		if (buffer) {
-			playSampleAt(ctx, buffer, ctx.currentTime, duration, velocity);
+			const playAt = Math.max(startTime, ctx.currentTime);
+			playSampleAt(ctx, buffer, playAt, duration, velocity);
 		}
 	});
 }
 
 /** Play a chord with current strum settings */
-export function playChord(midiNotes: number[]) {
-	resumeAudio();
+export async function playChord(midiNotes: number[]) {
+	await resumeAudio();
 	const ctx = getCtx();
 	const now = ctx.currentTime;
 	const direction = strumDirectionSignal.get();
@@ -303,9 +309,11 @@ export function playChord(midiNotes: number[]) {
 		if (cached) {
 			playSampleAt(ctx, cached, time, duration, velocity);
 		} else {
+			const scheduledTime = time;
 			loadSample(ctx, folder, noteName).then((buffer) => {
 				if (buffer) {
-					playSampleAt(ctx, buffer, ctx.currentTime, duration, velocity);
+					const playAt = Math.max(scheduledTime, ctx.currentTime);
+					playSampleAt(ctx, buffer, playAt, duration, velocity);
 				}
 			});
 		}
