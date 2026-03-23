@@ -8,6 +8,7 @@ import {
 	mutedSignal,
 	playChord,
 	playNote,
+	preloadTone,
 	resumeAudio,
 	reverbSignal,
 	strumDirectionSignal,
@@ -140,4 +141,29 @@ test("midiToNoteName matches sample file naming convention (flats)", () => {
 	expect(midiToNoteName(66)).toBe("Gb4"); // F#/Gb
 	expect(midiToNoteName(68)).toBe("Ab4"); // G#/Ab
 	expect(midiToNoteName(70)).toBe("Bb4"); // A#/Bb
+});
+
+test("preloadTone is exported and returns a promise", async () => {
+	// preloadTone should be callable independently (for eager preloading)
+	const result = preloadTone("nylon");
+	expect(result).toBeInstanceOf(Promise);
+	// Should not throw even in test env (fetch failures are caught)
+	await result;
+});
+
+test("preloadTone accepts all valid tones", async () => {
+	const tones: GuitarTone[] = [
+		"nylon",
+		"steel",
+		"jazz",
+		"clean",
+		"muted",
+		"overdriven",
+		"distortion",
+	];
+	for (const tone of tones) {
+		const result = preloadTone(tone);
+		expect(result).toBeInstanceOf(Promise);
+		await result;
+	}
 });

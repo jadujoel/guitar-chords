@@ -96,12 +96,25 @@ async function loadSample(
 	return promise;
 }
 
-// ─── Audio Context & signal chain (lazy initialization) ─
+// ─── Audio State (signals for UI binding) ───────────────
+export const volumeSignal = createSignal(0.55);
+export const reverbSignal = createSignal(0.25);
+export const strumSpeedSignal = createSignal(0.03);
+export const mutedSignal = createSignal(false);
+export type StrumDirection = "down" | "up" | "fingerpick" | "arpeggio";
+export const strumDirectionSignal = createSignal<StrumDirection>("down");
+export const loopSignal = createSignal(false);
+export const bpmSignal = createSignal(120);
+export const toneSignal = createSignal<GuitarTone>("nylon");
+
+// ─── Audio Context & signal chain ──────────────────────
+// AudioContext is created eagerly so we can decode samples before user interaction.
+// It starts suspended and is resumed on the first user gesture.
 let _audioContext: AudioContext | null = null;
 let _masterGain: GainNode | null = null;
 let _dryGain: GainNode | null = null;
 let _wetGain: GainNode | null = null;
-let _initialized = false;
+let _signalChainReady = false;
 
 function getMasterGain(): GainNode {
 	if (!_masterGain) throw new Error("Audio not initialized");
@@ -115,9 +128,9 @@ function getCtx(): AudioContext {
 	return _audioContext;
 }
 
-function ensureInit() {
-	if (_initialized) return;
-	_initialized = true;
+function ensureSignalChain() {
+	if (_signalChainReady) return;
+	_signalChainReady = true;
 	const ctx = getCtx();
 
 	_masterGain = ctx.createGain();
@@ -159,13 +172,10 @@ function ensureInit() {
 		_dryGain?.gain.setValueAtTime(1 - v, ctx.currentTime);
 		_wetGain?.gain.setValueAtTime(v, ctx.currentTime);
 	});
-
-	// Pre-load common guitar range for the default tone
-	preloadTone(toneSignal.get());
 }
 
-/** Pre-fetch samples for the guitar-relevant MIDI range (40-88 ≈ E2–E6) */
-async function preloadTone(tone: GuitarTone): Promise<void> {
+/** Pre-fetch and decode samples for the guitar-relevant MIDI range (40-88 ≈ E2–E6) */
+export async function preloadTone(tone: GuitarTone): Promise<void> {
 	const ctx = getCtx();
 	const folder = GUITAR_TONES[tone].folder;
 	const promises: Promise<AudioBuffer | null>[] = [];
@@ -175,16 +185,10 @@ async function preloadTone(tone: GuitarTone): Promise<void> {
 	await Promise.all(promises);
 }
 
-// ─── Audio State (signals for UI binding) ───────────────
-export const volumeSignal = createSignal(0.55);
-export const reverbSignal = createSignal(0.25);
-export const strumSpeedSignal = createSignal(0.03);
-export const mutedSignal = createSignal(false);
-export type StrumDirection = "down" | "up" | "fingerpick" | "arpeggio";
-export const strumDirectionSignal = createSignal<StrumDirection>("down");
-export const loopSignal = createSignal(false);
-export const bpmSignal = createSignal(120);
-export const toneSignal = createSignal<GuitarTone>("nylon");
+// Start preloading the default tone immediately (decoding works on suspended context)
+if (typeof AudioContext !== "undefined") {
+	preloadTone(toneSignal.get());
+}
 
 function getActiveFolder(): string {
 	return GUITAR_TONES[toneSignal.get()].folder;
@@ -212,7 +216,7 @@ function createReverbImpulse(
 }
 
 export async function resumeAudio(): Promise<void> {
-	ensureInit();
+	ensureSignalChain();
 	const ctx = getCtx();
 	if (ctx.state === "suspended") {
 		await ctx.resume();
@@ -402,7 +406,7 @@ let _accentClick: AudioBuffer | null = null;
 let _normalClick: AudioBuffer | null = null;
 
 function playClick(accent: boolean) {
-	ensureInit();
+	ensureSignalChain();
 	const ctx = getCtx();
 	if (!_accentClick) _accentClick = createClickBuffer(ctx, 1200, 0.05);
 	if (!_normalClick) _normalClick = createClickBuffer(ctx, 800, 0.04);
@@ -485,6 +489,6 @@ export function tapTempo(): number {
 }
 
 export function getAudioContext(): AudioContext {
-	ensureInit();
+	ensureSignalChain();
 	return getCtx();
 }
