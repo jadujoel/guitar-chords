@@ -8,6 +8,18 @@ const server = Bun.serve({
 			return new Response("Method Not Allowed", { status: 405 });
 		}
 		let pathname = new URL(request.url).pathname;
+
+		// Serve sound samples directly from project root
+		if (pathname.startsWith("/sound/")) {
+			const file = Bun.file(pathname.slice(1));
+			if (!(await file.exists())) {
+				return new Response("Not Found", { status: 404 });
+			}
+			return new Response(file, {
+				headers: { "Cache-Control": "public, max-age=86400" },
+			});
+		}
+
 		if (pathname === "/") {
 			await build();
 			pathname = "dist/index.html";

@@ -1,13 +1,14 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
 
-const CACHE_NAME = "guitar-chords-v1";
+const CACHE_NAME = "guitar-chords-v2";
 
+// __JS_FILE__ is replaced by the build script with the actual hashed filename
 const PRECACHE_URLS = [
 	"./",
 	"./index.html",
 	"./index.css",
-	"./main.js",
+	"./__JS_FILE__",
 	"./manifest.json",
 ];
 
@@ -38,10 +39,10 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
 	const url = new URL(event.request.url);
 
-	// Runtime cache for audio/soundfont data
+	// Runtime cache for local sound samples (OGG files)
 	if (
-		url.hostname === "surikov.github.io" &&
-		(url.pathname.includes("webaudiofont") || url.pathname.includes("sound"))
+		url.origin === self.location.origin &&
+		url.pathname.startsWith("/sound/")
 	) {
 		event.respondWith(
 			caches.open(AUDIO_CACHE).then((cache) =>

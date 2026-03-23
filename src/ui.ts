@@ -366,6 +366,129 @@ export function App() {
 		}
 	}
 
+	// ── Global Instrument Selector ──
+	const globalInstrBar = el("div", { className: "instrument-selector" });
+	for (const [key, config] of Object.entries(INSTRUMENTS)) {
+		const btn = el("button", {
+			className: `instrument-btn${key === "guitar" ? " active" : ""}`,
+		});
+		btn.textContent = config.name;
+		btn.onclick = () => {
+			instrumentSignal.set(key as Instrument);
+			globalInstrBar.querySelectorAll(".instrument-btn").forEach((b) => {
+				b.classList.remove("active");
+			});
+			btn.classList.add("active");
+		};
+		globalInstrBar.appendChild(btn);
+	}
+	container.appendChild(globalInstrBar);
+
+	// ── Global Audio Controls ──
+	const globalAudioCtrl = el("div", { className: "audio-controls" });
+
+	// Volume
+	const gVolGroup = el("div", { className: "audio-control-group" });
+	const gVolBtn = el("button", { className: "btn btn-icon" });
+	gVolBtn.setAttribute("aria-label", "Toggle mute");
+	function updateGlobalVolIcon() {
+		gVolBtn.innerHTML = "";
+		gVolBtn.appendChild(icon(mutedSignal.get() ? VolumeX : Volume2, 16));
+	}
+	updateGlobalVolIcon();
+	gVolBtn.onclick = () => {
+		mutedSignal.set(!mutedSignal.get());
+		updateGlobalVolIcon();
+	};
+	gVolGroup.appendChild(gVolBtn);
+	const gVolSlider = document.createElement("input");
+	gVolSlider.type = "range";
+	gVolSlider.min = "0";
+	gVolSlider.max = "1";
+	gVolSlider.step = "0.01";
+	gVolSlider.value = String(volumeSignal.get());
+	gVolSlider.oninput = () => volumeSignal.set(Number(gVolSlider.value));
+	gVolGroup.appendChild(gVolSlider);
+	globalAudioCtrl.appendChild(gVolGroup);
+
+	// Reverb
+	const gRevGroup = el("div", { className: "audio-control-group" });
+	gRevGroup.appendChild(el("label", {}, "Reverb"));
+	const gRevSlider = document.createElement("input");
+	gRevSlider.type = "range";
+	gRevSlider.min = "0";
+	gRevSlider.max = "1";
+	gRevSlider.step = "0.01";
+	gRevSlider.value = String(reverbSignal.get());
+	gRevSlider.oninput = () => reverbSignal.set(Number(gRevSlider.value));
+	gRevGroup.appendChild(gRevSlider);
+	globalAudioCtrl.appendChild(gRevGroup);
+
+	// Strum direction
+	const gStrumGroup = el("div", { className: "audio-control-group" });
+	gStrumGroup.appendChild(el("label", {}, "Strum"));
+	const gStrumSelect = document.createElement("select");
+	for (const dir of [
+		"down",
+		"up",
+		"fingerpick",
+		"arpeggio",
+	] as StrumDirection[]) {
+		const opt = document.createElement("option");
+		opt.value = dir;
+		opt.textContent = dir.charAt(0).toUpperCase() + dir.slice(1);
+		gStrumSelect.appendChild(opt);
+	}
+	gStrumSelect.onchange = () =>
+		strumDirectionSignal.set(gStrumSelect.value as StrumDirection);
+	gStrumGroup.appendChild(gStrumSelect);
+	globalAudioCtrl.appendChild(gStrumGroup);
+
+	// Strum speed
+	const gSpeedGroup = el("div", { className: "audio-control-group" });
+	gSpeedGroup.appendChild(el("label", {}, "Speed"));
+	const gSpeedSlider = document.createElement("input");
+	gSpeedSlider.type = "range";
+	gSpeedSlider.min = "0.01";
+	gSpeedSlider.max = "0.1";
+	gSpeedSlider.step = "0.005";
+	gSpeedSlider.value = String(strumSpeedSignal.get());
+	gSpeedSlider.oninput = () => strumSpeedSignal.set(Number(gSpeedSlider.value));
+	gSpeedGroup.appendChild(gSpeedSlider);
+	globalAudioCtrl.appendChild(gSpeedGroup);
+
+	// Guitar tone selector
+	const gToneGroup = el("div", { className: "audio-control-group" });
+	gToneGroup.appendChild(el("label", {}, "Tone"));
+	const gToneSelect = document.createElement("select");
+	gToneSelect.className = "tone-selector";
+	for (const [key, config] of Object.entries(GUITAR_TONES)) {
+		const opt = document.createElement("option");
+		opt.value = key;
+		opt.textContent = config.name;
+		if (key === toneSignal.get()) opt.selected = true;
+		gToneSelect.appendChild(opt);
+	}
+	gToneSelect.onchange = async () => {
+		const tone = gToneSelect.value as GuitarTone;
+		gToneSelect.disabled = true;
+		try {
+			await loadTone(tone);
+			toast(`Tone: ${GUITAR_TONES[tone].name}`, "info");
+		} catch {
+			toast("Failed to load tone", "error");
+			gToneSelect.value = toneSignal.get();
+		}
+		gToneSelect.disabled = false;
+	};
+	gToneGroup.appendChild(gToneSelect);
+	globalAudioCtrl.appendChild(gToneGroup);
+
+	container.appendChild(globalAudioCtrl);
+
+	// ── Global Metronome ──
+	buildMetronomeUI(container);
+
 	// ═══ Panel 0: Chords (main chord viewer) ═══
 	const chordsPanel = el("div", { className: "tab-panel active" });
 	chordsPanel.setAttribute("role", "tabpanel");
@@ -430,129 +553,6 @@ export function App() {
 // ═══════════════════════════════════════════════════════════
 
 function buildChordsPanel(panel: HTMLDivElement) {
-	// ── Instrument selector ──
-	const instrBar = el("div", { className: "instrument-selector" });
-	for (const [key, config] of Object.entries(INSTRUMENTS)) {
-		const btn = el("button", {
-			className: `instrument-btn${key === "guitar" ? " active" : ""}`,
-		});
-		btn.textContent = config.name;
-		btn.onclick = () => {
-			instrumentSignal.set(key as Instrument);
-			instrBar.querySelectorAll(".instrument-btn").forEach((b) => {
-				b.classList.remove("active");
-			});
-			btn.classList.add("active");
-		};
-		instrBar.appendChild(btn);
-	}
-	panel.appendChild(instrBar);
-
-	// ── Audio controls ──
-	const audioCtrl = el("div", { className: "audio-controls" });
-
-	// Volume
-	const volGroup = el("div", { className: "audio-control-group" });
-	const volBtn = el("button", { className: "btn btn-icon" });
-	volBtn.setAttribute("aria-label", "Toggle mute");
-	function updateVolIcon() {
-		volBtn.innerHTML = "";
-		volBtn.appendChild(icon(mutedSignal.get() ? VolumeX : Volume2, 16));
-	}
-	updateVolIcon();
-	volBtn.onclick = () => {
-		mutedSignal.set(!mutedSignal.get());
-		updateVolIcon();
-	};
-	volGroup.appendChild(volBtn);
-	const volSlider = document.createElement("input");
-	volSlider.type = "range";
-	volSlider.min = "0";
-	volSlider.max = "1";
-	volSlider.step = "0.01";
-	volSlider.value = String(volumeSignal.get());
-	volSlider.oninput = () => volumeSignal.set(Number(volSlider.value));
-	volGroup.appendChild(volSlider);
-	audioCtrl.appendChild(volGroup);
-
-	// Reverb
-	const revGroup = el("div", { className: "audio-control-group" });
-	revGroup.appendChild(el("label", {}, "Reverb"));
-	const revSlider = document.createElement("input");
-	revSlider.type = "range";
-	revSlider.min = "0";
-	revSlider.max = "1";
-	revSlider.step = "0.01";
-	revSlider.value = String(reverbSignal.get());
-	revSlider.oninput = () => reverbSignal.set(Number(revSlider.value));
-	revGroup.appendChild(revSlider);
-	audioCtrl.appendChild(revGroup);
-
-	// Strum direction
-	const strumGroup = el("div", { className: "audio-control-group" });
-	strumGroup.appendChild(el("label", {}, "Strum"));
-	const strumSelect = document.createElement("select");
-	for (const dir of [
-		"down",
-		"up",
-		"fingerpick",
-		"arpeggio",
-	] as StrumDirection[]) {
-		const opt = document.createElement("option");
-		opt.value = dir;
-		opt.textContent = dir.charAt(0).toUpperCase() + dir.slice(1);
-		strumSelect.appendChild(opt);
-	}
-	strumSelect.onchange = () =>
-		strumDirectionSignal.set(strumSelect.value as StrumDirection);
-	strumGroup.appendChild(strumSelect);
-	audioCtrl.appendChild(strumGroup);
-
-	// Strum speed
-	const speedGroup = el("div", { className: "audio-control-group" });
-	speedGroup.appendChild(el("label", {}, "Speed"));
-	const speedSlider = document.createElement("input");
-	speedSlider.type = "range";
-	speedSlider.min = "0.01";
-	speedSlider.max = "0.1";
-	speedSlider.step = "0.005";
-	speedSlider.value = String(strumSpeedSignal.get());
-	speedSlider.oninput = () => strumSpeedSignal.set(Number(speedSlider.value));
-	speedGroup.appendChild(speedSlider);
-	audioCtrl.appendChild(speedGroup);
-
-	// Guitar tone selector
-	const toneGroup = el("div", { className: "audio-control-group" });
-	toneGroup.appendChild(el("label", {}, "Tone"));
-	const toneSelect = document.createElement("select");
-	toneSelect.className = "tone-selector";
-	for (const [key, config] of Object.entries(GUITAR_TONES)) {
-		const opt = document.createElement("option");
-		opt.value = key;
-		opt.textContent = config.name;
-		if (key === toneSignal.get()) opt.selected = true;
-		toneSelect.appendChild(opt);
-	}
-	toneSelect.onchange = async () => {
-		const tone = toneSelect.value as GuitarTone;
-		toneSelect.disabled = true;
-		try {
-			await loadTone(tone);
-			toast(`Tone: ${GUITAR_TONES[tone].name}`, "info");
-		} catch {
-			toast("Failed to load tone", "error");
-			toneSelect.value = toneSignal.get();
-		}
-		toneSelect.disabled = false;
-	};
-	toneGroup.appendChild(toneSelect);
-	audioCtrl.appendChild(toneGroup);
-
-	panel.appendChild(audioCtrl);
-
-	// ── Metronome ──
-	buildMetronomeUI(panel);
-
 	// ── Toolbar ──
 	const toolbar = el("div", { className: "toolbar" });
 	const inputWrapper = el("div", { className: "input-wrapper" });
@@ -1182,8 +1182,29 @@ function buildProgressionPanel(panel: HTMLDivElement) {
 	const playProgBtn = el("button", { className: "btn btn-primary" });
 	playProgBtn.appendChild(icon(Play, 14));
 	playProgBtn.appendChild(document.createTextNode("Play"));
-	playProgBtn.onclick = () => playProgression();
+	playProgBtn.onclick = () => {
+		if (_progressionPlaying) {
+			stopProgression();
+		} else {
+			playProgression();
+		}
+	};
 	controls.appendChild(playProgBtn);
+
+	// Update play button state when progression starts/stops
+	function updatePlayProgBtn() {
+		playProgBtn.innerHTML = "";
+		if (_progressionPlaying) {
+			playProgBtn.appendChild(icon(Square, 14));
+			playProgBtn.appendChild(document.createTextNode("Stop"));
+			playProgBtn.classList.add("btn-danger");
+		} else {
+			playProgBtn.appendChild(icon(Play, 14));
+			playProgBtn.appendChild(document.createTextNode("Play"));
+			playProgBtn.classList.remove("btn-danger");
+		}
+	}
+	_progressionPlayingListeners.push(updatePlayProgBtn);
 
 	const loopProgBtn = el("button", { className: "btn" });
 	loopProgBtn.appendChild(icon(Repeat, 14));
@@ -1277,24 +1298,91 @@ function buildProgressionPanel(panel: HTMLDivElement) {
 	renderStrip();
 }
 
+let _progressionPlaying = false;
+let _progressionTimers: ReturnType<typeof setTimeout>[] = [];
+const _progressionPlayingListeners: (() => void)[] = [];
+
+function notifyProgressionListeners() {
+	for (const fn of _progressionPlayingListeners) fn();
+}
+
+function stopProgression() {
+	for (const t of _progressionTimers) clearTimeout(t);
+	_progressionTimers = [];
+	_progressionPlaying = false;
+	notifyProgressionListeners();
+}
+
 function playProgression() {
+	stopProgression();
 	const prog = progressionSignal.get();
 	if (prog.items.length === 0) return;
+
+	_progressionPlaying = true;
+	notifyProgressionListeners();
+
+	// If metronome is running, sync to its beat
+	const metState = metronomeSignal.get();
+	if (metState.playing) {
+		playProgressionSynced(prog);
+		return;
+	}
+
+	// Unsynced playback: schedule chords based on BPM
 	const bpm = bpmSignal.get();
 	const beatDuration = 60000 / bpm;
 
 	let offset = 0;
 	for (const item of prog.items) {
-		setTimeout(() => {
+		const t = setTimeout(() => {
+			if (!_progressionPlaying) return;
 			const data = getChordData(item.chordName, 0);
 			if (data) playChord(data.midiNotes);
 		}, offset);
+		_progressionTimers.push(t);
 		offset += item.beats * beatDuration;
 	}
 
 	if (prog.loop) {
-		setTimeout(() => playProgression(), offset);
+		const t = setTimeout(() => {
+			if (_progressionPlaying) playProgression();
+		}, offset);
+		_progressionTimers.push(t);
+	} else {
+		const t = setTimeout(() => stopProgression(), offset);
+		_progressionTimers.push(t);
 	}
+}
+
+function playProgressionSynced(prog: {
+	items: { chordName: string; beats: number }[];
+	loop: boolean;
+}) {
+	let itemIndex = 0;
+	let beatCount = 0;
+
+	// Play the first chord immediately
+	const firstData = getChordData(prog.items[0].chordName, 0);
+	if (firstData) playChord(firstData.midiNotes);
+
+	onMetronomeBeat((_beat, _isAccent) => {
+		if (!_progressionPlaying) return;
+		beatCount++;
+		if (beatCount >= prog.items[itemIndex].beats) {
+			beatCount = 0;
+			itemIndex++;
+			if (itemIndex >= prog.items.length) {
+				if (prog.loop) {
+					itemIndex = 0;
+				} else {
+					stopProgression();
+					return;
+				}
+			}
+			const data = getChordData(prog.items[itemIndex].chordName, 0);
+			if (data) playChord(data.midiNotes);
+		}
+	});
 }
 
 // ═══ Songs Panel ═══

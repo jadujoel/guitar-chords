@@ -34,10 +34,32 @@ export async function build() {
 
 	await Bun.write("dist/index.html", html);
 
+	// Inject hashed JS filename into service worker
+	let sw = await Bun.file("dist/sw.js").text();
+	sw = sw.replace("__JS_FILE__", jsName ?? "main.js");
+	await Bun.write("dist/sw.js", sw);
+
 	// Copy static assets
 	await copy("index.css", "manifest.json", "icon-192.svg", "icon-512.svg");
 
+	// Copy sound samples
+	await copySoundSamples();
+
 	console.log(`Built successfully: ${jsName}`);
+}
+
+async function copySoundSamples() {
+	const { mkdir } = await import("node:fs/promises");
+	const soundDir = "sound";
+	const destDir = "dist/sound";
+
+	const glob = new Bun.Glob("*/*.ogg");
+	for await (const file of glob.scan(soundDir)) {
+		const destPath = `${destDir}/${file}`;
+		const dir = destPath.substring(0, destPath.lastIndexOf("/"));
+		await mkdir(dir, { recursive: true });
+		await Bun.write(destPath, Bun.file(`${soundDir}/${file}`));
+	}
 }
 
 async function copy(...files: readonly string[]) {

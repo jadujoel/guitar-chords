@@ -1,49 +1,103 @@
 /**
- * Enhanced Audio engine: WebAudioFont chord playback with
+ * Enhanced Audio engine: Sample-based chord playback with
  * strum direction, adjustable speed/volume/reverb, loop, metronome, single-note playback.
- * Supports multiple guitar tones.
+ * Uses high-quality MusyngKite OGG samples (CC-BY-SA 3.0).
  */
 
 import { createSignal } from "./state";
 
 // ─── Guitar Tone Definitions ───────────────────────────
-export type GuitarTone = "nylon" | "steel" | "clean" | "overdriven";
+export type GuitarTone =
+	| "nylon"
+	| "steel"
+	| "jazz"
+	| "clean"
+	| "muted"
+	| "overdriven"
+	| "distortion";
 
 export interface ToneConfig {
 	name: string;
-	variable: string;
-	url: string;
+	folder: string;
 }
 
 export const GUITAR_TONES: Record<GuitarTone, ToneConfig> = {
-	nylon: {
-		name: "Nylon",
-		variable: "_tone_0250_FluidR3_GM_sf2_file",
-		url: "https://surikov.github.io/webaudiofontdata/sound/0250_FluidR3_GM_sf2_file.js",
-	},
-	steel: {
-		name: "Steel",
-		variable: "_tone_0260_FluidR3_GM_sf2_file",
-		url: "https://surikov.github.io/webaudiofontdata/sound/0260_FluidR3_GM_sf2_file.js",
-	},
-	clean: {
-		name: "Clean Electric",
-		variable: "_tone_0270_FluidR3_GM_sf2_file",
-		url: "https://surikov.github.io/webaudiofontdata/sound/0270_FluidR3_GM_sf2_file.js",
-	},
-	overdriven: {
-		name: "Overdriven",
-		variable: "_tone_0290_FluidR3_GM_sf2_file",
-		url: "https://surikov.github.io/webaudiofontdata/sound/0290_FluidR3_GM_sf2_file.js",
-	},
+	nylon: { name: "Nylon", folder: "acoustic_guitar_nylon" },
+	steel: { name: "Steel", folder: "acoustic_guitar_steel" },
+	jazz: { name: "Jazz", folder: "electric_guitar_jazz" },
+	clean: { name: "Clean Electric", folder: "electric_guitar_clean" },
+	muted: { name: "Muted Electric", folder: "electric_guitar_muted" },
+	overdriven: { name: "Overdriven", folder: "overdriven_guitar" },
+	distortion: { name: "Distortion", folder: "distortion_guitar" },
 };
 
-// ─── Audio Context & Player (lazy initialization) ──────
+// ─── MIDI ↔ Note name mapping ──────────────────────────
+const NOTE_NAMES = [
+	"C",
+	"Db",
+	"D",
+	"Eb",
+	"E",
+	"F",
+	"Gb",
+	"G",
+	"Ab",
+	"A",
+	"Bb",
+	"B",
+];
+
+export function midiToNoteName(midi: number): string {
+	const octave = Math.floor(midi / 12) - 1;
+	const note = NOTE_NAMES[midi % 12];
+	return `${note}${octave}`;
+}
+
+// ─── Sample cache & loader ─────────────────────────────
+const _sampleCache = new Map<string, AudioBuffer>();
+const _loadingPromises = new Map<string, Promise<AudioBuffer | null>>();
+
+function sampleUrl(folder: string, noteName: string): string {
+	return `./sound/${folder}/${noteName}.ogg`;
+}
+
+async function loadSample(
+	ctx: AudioContext,
+	folder: string,
+	noteName: string,
+): Promise<AudioBuffer | null> {
+	const key = `${folder}/${noteName}`;
+	const cached = _sampleCache.get(key);
+	if (cached) return cached;
+
+	const existing = _loadingPromises.get(key);
+	if (existing) return existing;
+
+	const promise = (async () => {
+		try {
+			const response = await fetch(sampleUrl(folder, noteName));
+			if (!response.ok) return null;
+			const arrayBuffer = await response.arrayBuffer();
+			const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+			_sampleCache.set(key, audioBuffer);
+			return audioBuffer;
+		} catch {
+			return null;
+		} finally {
+			_loadingPromises.delete(key);
+		}
+	})();
+
+	_loadingPromises.set(key, promise);
+	return promise;
+}
+
+// ─── Audio Context & signal chain (lazy initialization) ─
 let _audioContext: AudioContext | null = null;
-let _player: typeof WebAudioFontPlayer.prototype | null = null;
 let _masterGain: GainNode | null = null;
+let _dryGain: GainNode | null = null;
+let _wetGain: GainNode | null = null;
 let _initialized = false;
-const _loadedTones = new Set<GuitarTone>(["nylon"]);
 
 function getMasterGain(): GainNode {
 	if (!_masterGain) throw new Error("Audio not initialized");
@@ -57,48 +111,32 @@ function getCtx(): AudioContext {
 	return _audioContext;
 }
 
-function getPlayer(): typeof WebAudioFontPlayer.prototype {
-	if (!_player) {
-		_player = new WebAudioFontPlayer();
-	}
-	return _player;
-}
-
 function ensureInit() {
 	if (_initialized) return;
 	_initialized = true;
 	const ctx = getCtx();
-	const player = getPlayer();
-	const notarget = ctx.createGain();
-	const sf2File = _tone_0250_FluidR3_GM_sf2_file;
-	const sf2FileName = "_tone_0250_FluidR3_GM_sf2_file";
 
 	_masterGain = ctx.createGain();
-	const dryGain = ctx.createGain();
-	const wetGain = ctx.createGain();
+	_dryGain = ctx.createGain();
+	_wetGain = ctx.createGain();
 	const convolver = ctx.createConvolver();
 	const compressor = ctx.createDynamicsCompressor();
 
 	_masterGain.gain.value = volumeSignal.get();
-	dryGain.gain.value = 1 - reverbSignal.get();
-	wetGain.gain.value = reverbSignal.get();
+	_dryGain.gain.value = 1 - reverbSignal.get();
+	_wetGain.gain.value = reverbSignal.get();
 	compressor.threshold.value = -18;
 	compressor.knee.value = 12;
 	compressor.ratio.value = 4;
 
 	convolver.buffer = createReverbImpulse(ctx, 1.8, 3.5);
 
-	_masterGain.connect(dryGain);
+	_masterGain.connect(_dryGain);
 	_masterGain.connect(convolver);
-	convolver.connect(wetGain);
-	dryGain.connect(compressor);
-	wetGain.connect(compressor);
+	convolver.connect(_wetGain);
+	_dryGain.connect(compressor);
+	_wetGain.connect(compressor);
 	compressor.connect(ctx.destination);
-
-	player.loader.decodeAfterLoading(ctx, sf2FileName);
-	for (let i = 0; i < 128; i++) {
-		player.queueWaveTable(ctx, notarget, sf2File, 0, i, 1.5);
-	}
 
 	// React to signal changes
 	volumeSignal.subscribe((v) => {
@@ -114,9 +152,23 @@ function ensureInit() {
 		);
 	});
 	reverbSignal.subscribe((v) => {
-		dryGain.gain.setValueAtTime(1 - v, ctx.currentTime);
-		wetGain.gain.setValueAtTime(v, ctx.currentTime);
+		_dryGain?.gain.setValueAtTime(1 - v, ctx.currentTime);
+		_wetGain?.gain.setValueAtTime(v, ctx.currentTime);
 	});
+
+	// Pre-load common guitar range for the default tone
+	preloadTone(toneSignal.get());
+}
+
+/** Pre-fetch samples for the guitar-relevant MIDI range (40-88 ≈ E2–E6) */
+async function preloadTone(tone: GuitarTone): Promise<void> {
+	const ctx = getCtx();
+	const folder = GUITAR_TONES[tone].folder;
+	const promises: Promise<AudioBuffer | null>[] = [];
+	for (let midi = 40; midi <= 88; midi++) {
+		promises.push(loadSample(ctx, folder, midiToNoteName(midi)));
+	}
+	await Promise.all(promises);
 }
 
 // ─── Audio State (signals for UI binding) ───────────────
@@ -130,39 +182,13 @@ export const loopSignal = createSignal(false);
 export const bpmSignal = createSignal(120);
 export const toneSignal = createSignal<GuitarTone>("nylon");
 
-function getActiveSoundfont(): unknown {
-	const tone = toneSignal.get();
-	const config = GUITAR_TONES[tone];
-	// biome-ignore lint/suspicious/noExplicitAny: WebAudioFont globals
-	return (globalThis as any)[config.variable] ?? _tone_0250_FluidR3_GM_sf2_file;
+function getActiveFolder(): string {
+	return GUITAR_TONES[toneSignal.get()].folder;
 }
 
 export async function loadTone(tone: GuitarTone): Promise<void> {
-	if (_loadedTones.has(tone)) {
-		toneSignal.set(tone);
-		return;
-	}
-	const config = GUITAR_TONES[tone];
-	// Load the soundfont script dynamically
-	return new Promise((resolve, reject) => {
-		const script = document.createElement("script");
-		script.src = config.url;
-		script.onload = () => {
-			_loadedTones.add(tone);
-			// Pre-decode the new soundfont
-			const ctx = getCtx();
-			const player = getPlayer();
-			// biome-ignore lint/suspicious/noExplicitAny: WebAudioFont globals
-			const sf = (globalThis as any)[config.variable];
-			if (sf) {
-				player.loader.decodeAfterLoading(ctx, config.variable);
-			}
-			toneSignal.set(tone);
-			resolve();
-		};
-		script.onerror = () => reject(new Error(`Failed to load tone: ${tone}`));
-		document.head.appendChild(script);
-	});
+	toneSignal.set(tone);
+	await preloadTone(tone);
 }
 
 function createReverbImpulse(
@@ -189,19 +215,55 @@ export function resumeAudio() {
 	}
 }
 
+/** Play a sample-based note at a specific time with velocity envelope */
+function playSampleAt(
+	ctx: AudioContext,
+	buffer: AudioBuffer,
+	time: number,
+	duration: number,
+	velocity: number,
+) {
+	const source = ctx.createBufferSource();
+	source.buffer = buffer;
+
+	const gain = ctx.createGain();
+	gain.gain.setValueAtTime(velocity, time);
+	// Natural decay envelope
+	gain.gain.setValueAtTime(
+		velocity,
+		time + Math.min(duration * 0.8, buffer.duration * 0.8),
+	);
+	gain.gain.linearRampToValueAtTime(
+		0,
+		time + Math.min(duration, buffer.duration),
+	);
+
+	source.connect(gain);
+	gain.connect(getMasterGain());
+	source.start(time);
+	source.stop(time + Math.min(duration, buffer.duration));
+}
+
 /** Play a single MIDI note (for fretboard clicks) */
 export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
 	resumeAudio();
 	const ctx = getCtx();
-	getPlayer().queueWaveTable(
-		ctx,
-		getMasterGain(),
-		getActiveSoundfont(),
-		ctx.currentTime,
-		midi,
-		duration,
-		velocity,
-	);
+	const folder = getActiveFolder();
+	const noteName = midiToNoteName(midi);
+
+	// Try cached first for instant playback
+	const cached = _sampleCache.get(`${folder}/${noteName}`);
+	if (cached) {
+		playSampleAt(ctx, cached, ctx.currentTime, duration, velocity);
+		return;
+	}
+
+	// Load and play async
+	loadSample(ctx, folder, noteName).then((buffer) => {
+		if (buffer) {
+			playSampleAt(ctx, buffer, ctx.currentTime, duration, velocity);
+		}
+	});
 }
 
 /** Play a chord with current strum settings */
@@ -211,6 +273,7 @@ export function playChord(midiNotes: number[]) {
 	const now = ctx.currentTime;
 	const direction = strumDirectionSignal.get();
 	const baseInterval = strumSpeedSignal.get();
+	const folder = getActiveFolder();
 
 	let orderedNotes: number[];
 	switch (direction) {
@@ -234,15 +297,18 @@ export function playChord(midiNotes: number[]) {
 	for (let i = 0; i < orderedNotes.length; i++) {
 		const time = now + i * interval;
 		const velocity = 0.65 + Math.random() * 0.35;
-		getPlayer().queueWaveTable(
-			ctx,
-			getMasterGain(),
-			getActiveSoundfont(),
-			time,
-			orderedNotes[i],
-			duration,
-			velocity,
-		);
+		const noteName = midiToNoteName(orderedNotes[i]);
+
+		const cached = _sampleCache.get(`${folder}/${noteName}`);
+		if (cached) {
+			playSampleAt(ctx, cached, time, duration, velocity);
+		} else {
+			loadSample(ctx, folder, noteName).then((buffer) => {
+				if (buffer) {
+					playSampleAt(ctx, buffer, ctx.currentTime, duration, velocity);
+				}
+			});
+		}
 	}
 }
 
