@@ -191,7 +191,7 @@ export function resumeAudio() {
 
 /** Play a single MIDI note (for fretboard clicks) */
 export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
-	ensureInit();
+	resumeAudio();
 	const ctx = getCtx();
 	getPlayer().queueWaveTable(
 		ctx,
@@ -206,7 +206,7 @@ export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
 
 /** Play a chord with current strum settings */
 export function playChord(midiNotes: number[]) {
-	ensureInit();
+	resumeAudio();
 	const ctx = getCtx();
 	const now = ctx.currentTime;
 	const direction = strumDirectionSignal.get();

@@ -197,8 +197,8 @@ async function run() {
 		await page.goto(BASE_URL);
 		await page.waitForSelector(".tab-bar");
 		const tabs = await page.$$(".tab-btn");
-		if (tabs.length !== 7)
-			throw new Error(`Expected 7 tabs, got ${tabs.length}`);
+		if (tabs.length !== 8)
+			throw new Error(`Expected 8 tabs, got ${tabs.length}`);
 		const names = await Promise.all(tabs.map((t) => t.textContent()));
 		const expected = [
 			"Chords",
@@ -208,6 +208,7 @@ async function run() {
 			"Theory",
 			"Practice",
 			"Share",
+			"Info",
 		];
 		for (let i = 0; i < expected.length; i++) {
 			if (names[i]?.trim() !== expected[i])
@@ -687,6 +688,76 @@ async function run() {
 		// QR code is SVG
 		const qrSvg = await page.$(".tab-panel.active svg");
 		if (!qrSvg) throw new Error("QR code SVG not found in share panel");
+	});
+
+	// ── Test 35: Info tab renders with all sections ──
+	await test("Info tab renders with feature sections", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[7].click();
+		await page.waitForTimeout(300);
+		const infoPage = await page.$(".info-page");
+		if (!infoPage) throw new Error("Info page not found");
+		const heading = await infoPage.$("h2");
+		const text = await heading?.textContent();
+		if (!text?.includes("How to Use"))
+			throw new Error(`Expected info heading, got "${text}"`);
+		const sections = await infoPage.$$(".info-section");
+		if (sections.length < 10)
+			throw new Error(
+				`Expected at least 10 info sections, got ${sections.length}`,
+			);
+	});
+
+	// ── Test 36: Info sections have icons and content ──
+	await test("Info sections have icons and descriptive content", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[7].click();
+		await page.waitForTimeout(300);
+		const sections = await page.$$(".info-section");
+		for (let i = 0; i < Math.min(3, sections.length); i++) {
+			const h3 = await sections[i].$("h3");
+			if (!h3) throw new Error(`Section ${i} missing heading`);
+			const svg = await sections[i].$("h3 svg");
+			if (!svg) throw new Error(`Section ${i} missing icon`);
+			const lis = await sections[i].$$("li");
+			if (lis.length === 0) throw new Error(`Section ${i} has no list items`);
+		}
+	});
+
+	// ── Test 37: Dropdowns have custom styling (no white background) ──
+	await test("Dropdowns have dark themed styling", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector("select");
+		const hasDarkBg = await page.evaluate(() => {
+			const sel = document.querySelector("select");
+			if (!sel) return false;
+			const style = getComputedStyle(sel);
+			// Check appearance is none (custom styled)
+			return style.appearance === "none" || style.webkitAppearance === "none";
+		});
+		if (!hasDarkBg) throw new Error("Dropdowns do not have custom appearance");
+	});
+
+	// ── Test 38: Toggle switches have custom styling ──
+	await test("Toggle switches are custom styled", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[1].click();
+		await page.waitForSelector(".fb-toggle", { timeout: 3000 });
+		const isCustom = await page.evaluate(() => {
+			const checkbox = document.querySelector(
+				'.fb-toggle input[type="checkbox"]',
+			);
+			if (!checkbox) return false;
+			const style = getComputedStyle(checkbox);
+			return style.appearance === "none" || style.webkitAppearance === "none";
+		});
+		if (!isCustom) throw new Error("Toggle checkboxes not custom styled");
 	});
 
 	await teardown();

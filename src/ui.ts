@@ -1,9 +1,11 @@
 /** UI module — builds and manages the entire DOM with all feature panels */
 import {
+	BookOpen,
 	Copy,
 	Download,
 	FileText,
 	GripVertical,
+	HelpCircle,
 	ListMusic,
 	Moon,
 	Music,
@@ -330,6 +332,7 @@ export function App() {
 		"Theory",
 		"Practice",
 		"Share",
+		"Info",
 	];
 	const tabBar = el("div", { className: "tab-bar" });
 	tabBar.setAttribute("role", "tablist");
@@ -408,6 +411,13 @@ export function App() {
 	buildSharePanel(sharePanel);
 	panels.push(sharePanel);
 	container.appendChild(sharePanel);
+
+	// ═══ Panel 7: Info ═══
+	const infoPanel = el("div", { className: "tab-panel" });
+	infoPanel.setAttribute("role", "tabpanel");
+	buildInfoPanel(infoPanel);
+	panels.push(infoPanel);
+	container.appendChild(infoPanel);
 
 	app.appendChild(container);
 }
@@ -2719,4 +2729,197 @@ function enterReplaceMode(
 	);
 
 	cancelBtn.onclick = exitReplaceMode;
+}
+
+// ═══ Info Panel ═══
+function buildInfoPanel(panel: HTMLDivElement) {
+	const page = el("div", { className: "info-page" });
+	page.appendChild(el("h2", {}, "How to Use Guitar Chords"));
+
+	const sections: {
+		icon: typeof HelpCircle;
+		title: string;
+		body: string;
+		items: string[];
+	}[] = [
+		{
+			icon: Music,
+			title: "Chords Tab — Browse & Play Chords",
+			body: "The main tab for searching, viewing, and playing chord diagrams.",
+			items: [
+				"Type a chord name (e.g. Am, G7, Cmaj7) in the search bar — suggestions appear as you type.",
+				"Click Add or press Enter to add a chord card to your collection.",
+				"Each card shows an SVG chord diagram with finger positions, fret numbers, and open/muted strings.",
+				"Use the Variation dropdown on each card to cycle through different voicings of the same chord.",
+				"Click the Play button on a card to hear the chord played with realistic guitar audio.",
+				"Drag cards to reorder them, or use the ↑↓ arrow buttons for keyboard reordering.",
+				"Click the pencil icon to replace a chord inline — type a new name and press Enter.",
+				"Click ✕ to remove a chord with a smooth exit animation.",
+				"Use Save/Load in the toolbar to export your chords as JSON or import from a file.",
+			],
+		},
+		{
+			icon: Volume2,
+			title: "Audio Controls",
+			body: "Fine-tune how your chords and notes sound.",
+			items: [
+				"Volume slider — controls master volume. Click the speaker icon to mute/unmute.",
+				"Reverb slider — adds room ambience from dry (0) to full reverb (1).",
+				"Strum dropdown — choose Down, Up, Fingerpick, or Arpeggio strum patterns.",
+				"Speed slider — controls how fast the strum sweeps across strings.",
+				"Tone dropdown — switch between Nylon, Steel, Clean Electric, and Overdriven guitar sounds.",
+			],
+		},
+		{
+			icon: Play,
+			title: "Metronome",
+			body: "A built-in metronome to keep time while practicing.",
+			items: [
+				"Drag the BPM slider (40–240) or type a value to set tempo.",
+				"Choose a time signature: 4/4, 3/4, 6/8, 2/4, 5/4, or 7/8.",
+				"Beat dots light up in sync — the first beat gets an accent click.",
+				"Tap Tempo — click the Tap button rhythmically to auto-detect your tempo.",
+				"Press Start to begin the metronome, Stop to pause.",
+			],
+		},
+		{
+			icon: Music,
+			title: "Transpose & Capo",
+			body: "Shift your chords up or down and see capo equivalents.",
+			items: [
+				"Use the + / − buttons to transpose all chords by one semitone at a time.",
+				"Select a capo fret (1–12) to see what shapes to play and what they sound like.",
+				'For example: capo on fret 2 shows "Play Am (sounds Bm)".',
+			],
+		},
+		{
+			icon: Music,
+			title: "Instrument Selector",
+			body: "Switch between different fretted instruments.",
+			items: [
+				"Choose between Guitar, Ukulele, Bass, and Banjo at the top of the Chords tab.",
+				"Chord diagrams and voicings update automatically for the selected instrument.",
+			],
+		},
+		{
+			icon: Music,
+			title: "Fretboard Tab — Interactive Neck",
+			body: "A full interactive fretboard for exploration and chord finding.",
+			items: [
+				"Click any position on the 22-fret neck to hear that note.",
+				"Toggle Notes to show note names (C, D, E…) on every fret.",
+				"Toggle Intervals to see intervals (R, m3, 5…) relative to the highlighted root.",
+				"Toggle Left-hand to flip the fretboard for left-handed players.",
+				"When you add chords, the fretboard highlights their scale tones.",
+				"Chord Finder: click multiple notes on the fretboard (or type them), and the app identifies matching chords with confidence percentages. Click a result to add it to your collection.",
+			],
+		},
+		{
+			icon: ListMusic,
+			title: "Progression Tab — Build Chord Progressions",
+			body: "Create, play, and loop chord progressions in any key.",
+			items: [
+				"Select a Key (C, D, E…) and toggle Minor for minor keys.",
+				"Choose a Preset progression (I-IV-V-I, 12-Bar Blues, ii-V-I, Pop Progression, etc.).",
+				"The progression strip shows your chords with beat counts; click ✕ to remove items.",
+				"Press Play to hear the full progression at the current BPM, or Loop to repeat.",
+				"Use the + / − buttons to transpose the entire progression.",
+				"Toggle Nashville # to display chords as Nashville number notation (1, 4, 5…).",
+				'Roman numeral analysis shows below (e.g. "I – IV – V – I").',
+				"Add All to Chords imports every progression chord as cards in the Chords tab.",
+			],
+		},
+		{
+			icon: FileText,
+			title: "Songs Tab — Manage Songs & Setlists",
+			body: "Create song sheets with lyrics, chords, and organize them into setlists.",
+			items: [
+				"Click New Song to create a song with a title, artist, key, tempo, and ChordPro-formatted lyrics.",
+				'ChordPro format puts chords in square brackets above lyrics: "[Am]Hello [G]world".',
+				"Songs appear as cards — click one to load its chords and view the formatted lyrics.",
+				"Edit or delete songs from their card. Export to ChordPro .cho files.",
+				"Create Setlists to group songs for a gig or practice session. Drag to reorder.",
+				"Performance Mode: open a setlist in full-screen mode with large chord badges, formatted lyrics, and auto-scroll for hands-free reading.",
+				"Auto-scroll speed controls let you adjust scrolling during performance.",
+			],
+		},
+		{
+			icon: BookOpen,
+			title: "Theory Tab — Scales & Diatonic Chords",
+			body: "Explore music theory with key detection and scale-based chord suggestions.",
+			items: [
+				"Select a Key and Scale (Major, Minor, Dorian, Mixolydian, Blues, Pentatonic, Lydian, Phrygian) to see all diatonic chords.",
+				"Click any diatonic chord button to instantly add it to your collection.",
+				"Key Detection: the app analyzes your current chords and suggests the most likely key.",
+				"The fretboard overlay shows scale tones highlighted for the selected key/scale.",
+			],
+		},
+		{
+			icon: HelpCircle,
+			title: "Practice Tab — Quiz, Ear Training & Mastery",
+			body: "Interactive practice tools to strengthen your chord knowledge.",
+			items: [
+				"Chord Quiz: a random chord name appears — type the correct name or shape to answer. Tracks your score.",
+				"Ear Training: hear a chord played, then identify it by name. Improves aural recognition.",
+				"Transition Trainer: two random chords appear — practice switching between them quickly.",
+				"Mastery Heatmap: see your progress across all chords with a color-coded grid (0–5 levels).",
+				"Spaced repetition: chords you struggle with appear more often; mastered chords appear less.",
+				"Practice streaks and session summaries keep you motivated.",
+			],
+		},
+		{
+			icon: Share2,
+			title: "Share Tab — Export & Share",
+			body: "Share your chord collection with others or export in various formats.",
+			items: [
+				"Generate a shareable URL — paste it anywhere and recipients see your exact chord setup.",
+				"Copy Link copies the URL to your clipboard.",
+				"QR Code: generate a scannable QR code for quick mobile sharing.",
+				"Export as PNG: save a high-quality image of all your chord diagrams.",
+				"Export as PDF: generate a printable chord sheet document.",
+				"Copy SVG: copy individual chord diagrams as SVG vectors for use in design tools.",
+			],
+		},
+		{
+			icon: Sun,
+			title: "Theme & Settings",
+			body: "Customize the look and feel.",
+			items: [
+				"Click the sun/moon icon in the header to toggle between Dark and Light themes.",
+				"Your theme preference is saved and persists across sessions.",
+				"The app is a Progressive Web App (PWA) — install it for offline use from the banner that appears on supported browsers.",
+			],
+		},
+		{
+			icon: Music,
+			title: "Keyboard Shortcuts & Tips",
+			body: "Quick tips for power users.",
+			items: [
+				"Press Enter in the search bar to add the first matching chord.",
+				"Use arrow keys ↑↓ in the autocomplete dropdown to navigate suggestions.",
+				"Press Escape to close dropdowns and exit replace mode.",
+				"Drag and drop chord cards to reorder your collection.",
+				"All data is saved to your browser's local storage automatically.",
+			],
+		},
+	];
+
+	for (const section of sections) {
+		const div = el("div", { className: "info-section" });
+		const h3 = el("h3", {});
+		h3.appendChild(icon(section.icon, 18));
+		h3.appendChild(document.createTextNode(section.title));
+		div.appendChild(h3);
+		div.appendChild(el("p", {}, section.body));
+		const ul = document.createElement("ul");
+		for (const item of section.items) {
+			const li = document.createElement("li");
+			li.textContent = item;
+			ul.appendChild(li);
+		}
+		div.appendChild(ul);
+		page.appendChild(div);
+	}
+
+	panel.appendChild(page);
 }
