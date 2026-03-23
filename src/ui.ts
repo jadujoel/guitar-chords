@@ -48,7 +48,12 @@ import {
 	volumeSignal,
 } from "./audio";
 import { findChordByNotes } from "./chord-finder";
-import { filterChordNames, getChordData } from "./chords";
+import {
+	filterChordNames,
+	getChordData,
+	getRecommendedVariation,
+	isRecommendedVariation,
+} from "./chords";
 import { createFretboardPanel, type Fretboard } from "./fretboard";
 import { INSTRUMENTS, type Instrument, instrumentSignal } from "./instruments";
 import {
@@ -749,7 +754,10 @@ function buildChordsPanel(panel: HTMLDivElement) {
 			toast(`Chord "${chordName}" not found`, "error");
 			return;
 		}
-		chordsSignal.update((c) => [...c, { name: chordName, variationIndex: 0 }]);
+		chordsSignal.update((c) => [
+			...c,
+			{ name: chordName, variationIndex: getRecommendedVariation(chordName) },
+		]);
 		chordInput.value = "";
 		chordInput.focus();
 		announce(`${chordName} added`);
@@ -951,7 +959,10 @@ function buildFretboardTab(panel: HTMLDivElement) {
 			const item = el("div", { className: "finder-match" });
 			item.innerHTML = `<span class="match-name">${m.name}</span> <span class="match-confidence">${Math.round(m.confidence * 100)}%</span>`;
 			item.onclick = () => {
-				chordsSignal.update((c) => [...c, { name: m.name, variationIndex: 0 }]);
+				chordsSignal.update((c) => [
+					...c,
+					{ name: m.name, variationIndex: getRecommendedVariation(m.name) },
+				]);
 				toast(`Added ${m.name}`, "success");
 			};
 			finderResults.appendChild(item);
@@ -1225,7 +1236,10 @@ function buildProgressionPanel(panel: HTMLDivElement) {
 			if (!existing.some((c) => c.name === item.chordName)) {
 				chordsSignal.update((c) => [
 					...c,
-					{ name: item.chordName, variationIndex: 0 },
+					{
+						name: item.chordName,
+						variationIndex: getRecommendedVariation(item.chordName),
+					},
 				]);
 			}
 		}
@@ -2029,7 +2043,13 @@ function buildTheoryPanel(panel: HTMLDivElement) {
 			btn.onclick = () => {
 				chordsSignal.update((items) => {
 					if (items.some((i) => i.name === c.chordName)) return items;
-					return [...items, { name: c.chordName, variationIndex: 0 }];
+					return [
+						...items,
+						{
+							name: c.chordName,
+							variationIndex: getRecommendedVariation(c.chordName),
+						},
+					];
 				});
 				toast(`Added ${c.chordName}`, "success");
 			};
@@ -2654,7 +2674,8 @@ function createChordCard(chordItem: ChordItem, index: number): HTMLDivElement {
 		for (let i = 0; i < totalVariations; i++) {
 			const option = document.createElement("option");
 			option.value = i.toString();
-			option.textContent = `Variation ${i + 1}`;
+			const star = isRecommendedVariation(chordItem.name, i) ? " ★" : "";
+			option.textContent = `${i + 1}${star}`;
 			if (i === chordItem.variationIndex) option.selected = true;
 			variationSelector.appendChild(option);
 		}
@@ -2817,7 +2838,10 @@ function enterReplaceMode(
 			chordsSignal.update((c) =>
 				c.map((item) =>
 					item.name === chordItem.name
-						? { name: newName, variationIndex: 0 }
+						? {
+								name: newName,
+								variationIndex: getRecommendedVariation(newName),
+							}
 						: item,
 				),
 			);
@@ -2873,7 +2897,7 @@ function buildInfoPanel(panel: HTMLDivElement) {
 				"Type a chord name (e.g. Am, G7, Cmaj7) in the search bar — suggestions appear as you type.",
 				"Click Add or press Enter to add a chord card to your collection.",
 				"Each card shows an SVG chord diagram with finger positions, fret numbers, and open/muted strings.",
-				"Use the Variation dropdown on each card to cycle through different voicings of the same chord.",
+				"Use the variation dropdown on each card to cycle through different voicings — the ★ marks the recommended voicing.",
 				"Click the Play button on a card to hear the chord played with realistic guitar audio.",
 				"Drag cards to reorder them, or use the ↑↓ arrow buttons for keyboard reordering.",
 				"Click the pencil icon to replace a chord inline — type a new name and press Enter.",

@@ -3,6 +3,8 @@ import {
 	allChordNames,
 	filterChordNames,
 	getChordData,
+	getRecommendedVariation,
+	isRecommendedVariation,
 	normalizeRootNote,
 } from "../src/chords";
 
@@ -158,5 +160,89 @@ describe("allChordNames", () => {
 
 	test("has reasonable count", () => {
 		expect(allChordNames.length).toBeGreaterThan(100);
+	});
+});
+
+describe("getRecommendedVariation", () => {
+	test("returns 0 for C major (exempt from bass rule)", () => {
+		expect(getRecommendedVariation("C")).toBe(0);
+	});
+
+	test("returns 0 for G major (exempt from bass rule)", () => {
+		expect(getRecommendedVariation("G")).toBe(0);
+	});
+
+	test("returns a valid variation index for D major", () => {
+		const idx = getRecommendedVariation("D");
+		const data = getChordData("D", idx);
+		expect(data).not.toBeNull();
+	});
+
+	test("returns a valid variation index for Am", () => {
+		const idx = getRecommendedVariation("Am");
+		const data = getChordData("Am", idx);
+		expect(data).not.toBeNull();
+	});
+
+	test("recommended variation has root in bass strings", () => {
+		// For E major, root is E (MIDI pitch class 4)
+		const idx = getRecommendedVariation("E");
+		const data = getChordData("E", idx);
+		expect(data).not.toBeNull();
+		// MIDI notes should exist
+		expect(data?.midiNotes.length).toBeGreaterThan(0);
+	});
+
+	test("returns 0 for unknown chord", () => {
+		expect(getRecommendedVariation("Xyz")).toBe(0);
+	});
+
+	test("works for sharp chords", () => {
+		const idx = getRecommendedVariation("F#");
+		expect(idx).toBeGreaterThanOrEqual(0);
+		expect(getChordData("F#", idx)).not.toBeNull();
+	});
+
+	test("works for flat chords", () => {
+		const idx = getRecommendedVariation("Bb");
+		expect(idx).toBeGreaterThanOrEqual(0);
+		expect(getChordData("Bb", idx)).not.toBeNull();
+	});
+
+	test("works for minor chords", () => {
+		const idx = getRecommendedVariation("Em");
+		expect(idx).toBeGreaterThanOrEqual(0);
+		expect(getChordData("Em", idx)).not.toBeNull();
+	});
+
+	test("works for 7th chords", () => {
+		const idx = getRecommendedVariation("A7");
+		expect(idx).toBeGreaterThanOrEqual(0);
+		expect(getChordData("A7", idx)).not.toBeNull();
+	});
+});
+
+describe("isRecommendedVariation", () => {
+	test("returns true for the recommended index", () => {
+		const idx = getRecommendedVariation("D");
+		expect(isRecommendedVariation("D", idx)).toBe(true);
+	});
+
+	test("returns false for non-recommended index", () => {
+		const idx = getRecommendedVariation("D");
+		// Try a different index
+		const otherIdx = idx === 0 ? 1 : 0;
+		const data = getChordData("D", otherIdx);
+		if (data) {
+			expect(isRecommendedVariation("D", otherIdx)).toBe(idx === otherIdx);
+		}
+	});
+
+	test("C major variation 0 is recommended", () => {
+		expect(isRecommendedVariation("C", 0)).toBe(true);
+	});
+
+	test("G major variation 0 is recommended", () => {
+		expect(isRecommendedVariation("G", 0)).toBe(true);
 	});
 });

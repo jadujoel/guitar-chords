@@ -2074,6 +2074,73 @@ async function run() {
 		if (!hasAriaLabel) throw new Error("Chord input missing aria-label");
 	});
 
+	// ── Test: Recommended variation star in dropdown ──
+	await test("Variation dropdown shows star for recommended variation", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "C", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".variation-selector");
+		const optionTexts = await page.$$eval(
+			".variation-selector option",
+			(opts) => opts.map((o) => o.textContent),
+		);
+		const hasStar = optionTexts.some((t) => t?.includes("★"));
+		if (!hasStar) throw new Error("No star found in variation options");
+	});
+
+	// ── Test: Variation labels are numbers not "Variation X" ──
+	await test("Variation dropdown uses number labels", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "D", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".variation-selector");
+		const firstOptionText = await page.$eval(
+			".variation-selector option:first-child",
+			(o) => o.textContent,
+		);
+		if (firstOptionText?.includes("Variation"))
+			throw new Error(`Expected number label, got "${firstOptionText}"`);
+	});
+
+	// ── Test: Adding chord defaults to recommended variation ──
+	await test("Adding chord defaults to recommended variation", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => localStorage.clear());
+		await page.reload();
+		await page.waitForSelector("#chord-input");
+		await page.fill("#chord-input", "D");
+		await page.waitForSelector(".autocomplete-list.visible");
+		// Click the first item that is exactly "D"
+		const items = await page.$$(".autocomplete-item");
+		for (const item of items) {
+			const text = await item.textContent();
+			if (text?.trim() === "D") {
+				await item.click();
+				break;
+			}
+		}
+		await page.waitForSelector(".chord");
+		// Check the selected variation in the dropdown has the star
+		const selectedText = await page.$eval(
+			".variation-selector option:checked",
+			(o) => o.textContent,
+		);
+		if (!selectedText?.includes("★"))
+			throw new Error(
+				`Expected recommended variation to be selected with star, got "${selectedText}"`,
+			);
+	});
+
 	await teardown();
 
 	console.log("\nDone!\n");
