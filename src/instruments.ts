@@ -1,9 +1,7 @@
-/** Multi-instrument support: guitar, ukulele, bass, mandolin */
-
 import { chords as guitarChords } from "@tombatossals/chords-db/lib/guitar.json";
 import { createSignal } from "./state";
 
-export type Instrument = "guitar" | "ukulele" | "bass" | "mandolin";
+export type Instrument = "guitar";
 
 export interface InstrumentConfig {
 	name: string;
@@ -20,27 +18,6 @@ export const INSTRUMENTS: Record<Instrument, InstrumentConfig> = {
 		tuning: [40, 45, 50, 55, 59, 64], // E2 A2 D3 G3 B3 E4
 		frets: 22,
 		tuningName: "Standard",
-	},
-	ukulele: {
-		name: "Ukulele",
-		strings: 4,
-		tuning: [67, 60, 64, 69], // G4 C4 E4 A4
-		frets: 15,
-		tuningName: "Standard (GCEA)",
-	},
-	bass: {
-		name: "Bass",
-		strings: 4,
-		tuning: [28, 33, 38, 43], // E1 A1 D2 G2
-		frets: 22,
-		tuningName: "Standard",
-	},
-	mandolin: {
-		name: "Mandolin",
-		strings: 4,
-		tuning: [55, 62, 69, 76], // G3 D4 A4 E5
-		frets: 17,
-		tuningName: "Standard (GDAE)",
 	},
 };
 
@@ -64,19 +41,13 @@ export function getInstrumentConfig(): InstrumentConfig {
 	return INSTRUMENTS[instrumentSignal.get()];
 }
 
-/** Get chord database for current instrument */
+/** Get chord database for guitar */
 export function getChordDatabase(): Record<
 	string,
 	{ key: string; suffix: string; positions: unknown[] }[]
 > {
-	const inst = instrumentSignal.get();
-	// Only guitar has full chord DB from the package
-	if (inst === "guitar") {
-		return guitarChords as Record<
-			string,
-			{ key: string; suffix: string; positions: unknown[] }[]
-		>;
-	}
-	// For other instruments, return empty - users can create custom chords
-	return {};
+	return guitarChords as Record<
+		string,
+		{ key: string; suffix: string; positions: unknown[] }[]
+	>;
 }

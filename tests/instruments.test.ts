@@ -8,31 +8,13 @@ import {
 } from "../src/instruments";
 
 // ── INSTRUMENTS ──
-test("INSTRUMENTS has all 4 instruments", () => {
+test("INSTRUMENTS has guitar", () => {
 	expect(INSTRUMENTS.guitar).toBeTruthy();
-	expect(INSTRUMENTS.ukulele).toBeTruthy();
-	expect(INSTRUMENTS.bass).toBeTruthy();
-	expect(INSTRUMENTS.mandolin).toBeTruthy();
 });
 
 test("guitar has 6 strings", () => {
 	expect(INSTRUMENTS.guitar.strings).toBe(6);
 	expect(INSTRUMENTS.guitar.tuning).toHaveLength(6);
-});
-
-test("ukulele has 4 strings", () => {
-	expect(INSTRUMENTS.ukulele.strings).toBe(4);
-	expect(INSTRUMENTS.ukulele.tuning).toHaveLength(4);
-});
-
-test("bass has 4 strings", () => {
-	expect(INSTRUMENTS.bass.strings).toBe(4);
-	expect(INSTRUMENTS.bass.tuning).toHaveLength(4);
-});
-
-test("mandolin has 4 strings", () => {
-	expect(INSTRUMENTS.mandolin.strings).toBe(4);
-	expect(INSTRUMENTS.mandolin.tuning).toHaveLength(4);
 });
 
 // ── GUITAR_TUNINGS ──

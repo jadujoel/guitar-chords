@@ -55,7 +55,7 @@ import {
 	isRecommendedVariation,
 } from "./chords";
 import { createFretboardPanel, type Fretboard } from "./fretboard";
-import { INSTRUMENTS, type Instrument, instrumentSignal } from "./instruments";
+
 import {
 	type Difficulty,
 	difficultySignal,
@@ -370,24 +370,6 @@ export function App() {
 			panels[i].classList.toggle("active", i === idx);
 		}
 	}
-
-	// ── Global Instrument Selector ──
-	const globalInstrBar = el("div", { className: "instrument-selector" });
-	for (const [key, config] of Object.entries(INSTRUMENTS)) {
-		const btn = el("button", {
-			className: `instrument-btn${key === "guitar" ? " active" : ""}`,
-		});
-		btn.textContent = config.name;
-		btn.onclick = () => {
-			instrumentSignal.set(key as Instrument);
-			globalInstrBar.querySelectorAll(".instrument-btn").forEach((b) => {
-				b.classList.remove("active");
-			});
-			btn.classList.add("active");
-		};
-		globalInstrBar.appendChild(btn);
-	}
-	container.appendChild(globalInstrBar);
 
 	// ── Global Audio Controls ──
 	const globalAudioCtrl = el("div", { className: "audio-controls" });
@@ -2939,15 +2921,7 @@ function buildInfoPanel(panel: HTMLDivElement) {
 				'For example: capo on fret 2 shows "Play Am (sounds Bm)".',
 			],
 		},
-		{
-			icon: Music,
-			title: "Instrument Selector",
-			body: "Switch between different fretted instruments.",
-			items: [
-				"Choose between Guitar, Ukulele, Bass, and Banjo at the top of the Chords tab.",
-				"Chord diagrams and voicings update automatically for the selected instrument.",
-			],
-		},
+
 		{
 			icon: Music,
 			title: "Fretboard Tab — Interactive Neck",
