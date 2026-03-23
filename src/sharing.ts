@@ -39,10 +39,22 @@ export function checkShareUrl(): ChordItem[] | null {
 
 // ─── PDF Export ────────────────────────────────────────
 
+/** Strip interactive elements (play, variation, drag, action buttons) for print */
+function stripInteractiveElements(html: string): string {
+	const template = document.createElement("div");
+	template.innerHTML = html;
+	for (const sel of [".chord-controls", ".chord-top-actions", ".drag-handle"]) {
+		for (const el of Array.from(template.querySelectorAll(sel))) el.remove();
+	}
+	return template.innerHTML;
+}
+
 /** Export chord sheet as printable PDF (uses browser print) */
 export function exportPDF(title: string, container: HTMLElement) {
 	const printWindow = window.open("", "_blank");
 	if (!printWindow) return;
+
+	const cleanHTML = stripInteractiveElements(container.innerHTML);
 
 	printWindow.document.write(`
 		<!DOCTYPE html>
@@ -56,12 +68,16 @@ export function exportPDF(title: string, container: HTMLElement) {
 				.chord-card { border: 1px solid #d4d4d8; border-radius: 8px; padding: 1rem; text-align: center; }
 				.chord-card h3 { margin: 0 0 0.5rem; }
 				.chord-card svg { max-width: 160px; width: 100%; }
+				.chord { border: 1px solid #d4d4d8; border-radius: 8px; padding: 1rem; text-align: center; }
+				.chord-name { font-size: 1.125rem; font-weight: 700; }
+				.chord-top-row { display: flex; justify-content: center; margin-bottom: 0.5rem; }
+				svg { max-width: 160px; width: 100%; }
 				@media print { body { padding: 0; } }
 			</style>
 		</head>
 		<body>
 			<h1>${escapeHtml(title)}</h1>
-			<div class="chord-grid">${container.innerHTML}</div>
+			<div class="chord-grid">${cleanHTML}</div>
 		</body>
 		</html>
 	`);

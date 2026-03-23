@@ -760,6 +760,54 @@ async function run() {
 		if (!isCustom) throw new Error("Toggle checkboxes not custom styled");
 	});
 
+	// ── Test 39: Difficulty selector exists in practice panel ──
+	await test("Practice panel has difficulty selector", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[5].click();
+		await page.waitForTimeout(300);
+		const diffSelect = await page.$("#difficulty-select");
+		if (!diffSelect) throw new Error("Difficulty selector not found");
+		const options = await page.$$("#difficulty-select option");
+		if (options.length !== 3)
+			throw new Error(`Expected 3 difficulty options, got ${options.length}`);
+	});
+
+	// ── Test 40: Difficulty selector changes value ──
+	await test("Difficulty selector can be changed", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[5].click();
+		await page.waitForTimeout(300);
+		await page.selectOption("#difficulty-select", "advanced");
+		const value = await page.$eval(
+			"#difficulty-select",
+			(el: HTMLSelectElement) => el.value,
+		);
+		if (value !== "advanced")
+			throw new Error(`Expected "advanced", got "${value}"`);
+	});
+
+	// ── Test 41: Chord quiz starts and shows diagram ──
+	await test("Chord quiz starts and shows diagram with input", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[5].click();
+		await page.waitForTimeout(300);
+		// Click "Chord Quiz" button
+		const modeBtns = await page.$$(".instrument-btn");
+		await modeBtns[0].click();
+		await page.waitForTimeout(500);
+		// Should show practice input and SVG
+		const input = await page.$(".practice-input");
+		if (!input) throw new Error("Quiz practice input not found");
+		const svg = await page.$(".practice-panel svg");
+		if (!svg) throw new Error("Quiz chord diagram not found");
+	});
+
 	await teardown();
 
 	console.log("\nDone!\n");

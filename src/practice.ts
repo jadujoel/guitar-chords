@@ -1,6 +1,6 @@
 /** Practice tools: quiz, ear training, chord transition, streak tracking */
 
-import { allChordNames, getChordData } from "./chords";
+import { getChordData } from "./chords";
 import { createSignal } from "./state";
 
 // ─── Practice State ────────────────────────────────────
@@ -182,6 +182,109 @@ export function getDueChords(limit = 10): string[] {
 	return due.slice(0, limit);
 }
 
+// ─── Difficulty Levels ─────────────────────────────────
+
+export type Difficulty = "beginner" | "intermediate" | "advanced";
+
+const DIFFICULTY_KEY = "guitar-chords-difficulty";
+
+function loadDifficulty(): Difficulty {
+	if (!hasDOM) return "beginner";
+	try {
+		const saved = localStorage.getItem(DIFFICULTY_KEY);
+		if (
+			saved === "beginner" ||
+			saved === "intermediate" ||
+			saved === "advanced"
+		)
+			return saved;
+		return "beginner";
+	} catch {
+		return "beginner";
+	}
+}
+
+export const difficultySignal = createSignal<Difficulty>(loadDifficulty());
+
+if (hasDOM) {
+	difficultySignal.subscribe((d) => {
+		localStorage.setItem(DIFFICULTY_KEY, d);
+	});
+}
+
+const CHORD_POOLS: Record<Difficulty, string[]> = {
+	beginner: ["A", "Am", "C", "D", "Dm", "E", "Em", "G"],
+	intermediate: [
+		"A",
+		"Am",
+		"B",
+		"Bm",
+		"C",
+		"D",
+		"Dm",
+		"E",
+		"Em",
+		"F",
+		"G",
+		"A7",
+		"D7",
+		"E7",
+		"G7",
+		"Am7",
+		"Dm7",
+		"Em7",
+		"Cmaj7",
+		"Fmaj7",
+	],
+	advanced: [
+		"A",
+		"Am",
+		"B",
+		"Bm",
+		"C",
+		"D",
+		"Dm",
+		"E",
+		"Em",
+		"F",
+		"G",
+		"A7",
+		"B7",
+		"C7",
+		"D7",
+		"E7",
+		"F7",
+		"G7",
+		"Am7",
+		"Bm7",
+		"Cm7",
+		"Dm7",
+		"Em7",
+		"Amaj7",
+		"Cmaj7",
+		"Dmaj7",
+		"Fmaj7",
+		"Gmaj7",
+		"Asus4",
+		"Dsus4",
+		"Esus4",
+		"Asus2",
+		"Dsus2",
+		"Cadd9",
+		"Gadd9",
+		"F#m",
+		"C#m",
+		"G#m",
+		"Bb",
+		"Eb",
+	],
+};
+
+export function getChordsForDifficulty(difficulty?: Difficulty): string[] {
+	const d = difficulty ?? difficultySignal.get();
+	return CHORD_POOLS[d].filter((c) => getChordData(c, 0) !== null);
+}
+
 // ─── Quiz Mode ─────────────────────────────────────────
 
 export interface QuizQuestion {
@@ -189,24 +292,44 @@ export interface QuizQuestion {
 	midiNotes: number[];
 }
 
-/** Pick a random chord suitable for quiz, prioritizing due chords */
+/** Recent chord history to prevent repetition */
+let recentQuizChords: string[] = [];
+
+/** Reset recent chord history (call when starting a new session) */
+export function resetQuizHistory() {
+	recentQuizChords = [];
+}
+
+/** Pick a random chord suitable for quiz, avoiding recent repeats */
 export function pickQuizChord(): QuizQuestion | null {
 	const due = getDueChords(5);
+	const pool = getChordsForDifficulty();
 	let candidates: string[];
 
 	if (due.length > 0) {
-		candidates = due;
+		// Filter due chords to those in the current difficulty pool
+		candidates = due.filter((c) => pool.includes(c));
+		if (candidates.length === 0) candidates = due;
 	} else {
-		// Pick from common chords
-		const common = ["A", "Am", "B", "Bm", "C", "D", "Dm", "E", "Em", "F", "G"];
-		candidates = common.filter((c) => allChordNames.includes(c));
+		candidates = pool;
 	}
 
 	if (candidates.length === 0) return null;
 
-	const chordName = candidates[Math.floor(Math.random() * candidates.length)];
+	// Remove recently used chords to avoid repetition
+	const historySize = Math.min(Math.floor(candidates.length / 2), 3);
+	const recentSet = new Set(recentQuizChords.slice(-historySize));
+	let filtered = candidates.filter((c) => !recentSet.has(c));
+	if (filtered.length === 0) filtered = candidates;
+
+	const chordName = filtered[Math.floor(Math.random() * filtered.length)];
 	const data = getChordData(chordName, 0);
 	if (!data) return null;
+
+	recentQuizChords.push(chordName);
+	// Keep history bounded
+	if (recentQuizChords.length > 10)
+		recentQuizChords = recentQuizChords.slice(-10);
 
 	return { chordName, midiNotes: data.midiNotes };
 }
@@ -218,13 +341,29 @@ export interface TransitionPair {
 	to: string;
 }
 
+let lastTransitionPair: TransitionPair | null = null;
+
 export function pickTransitionPair(): TransitionPair {
-	const common = ["A", "Am", "C", "D", "Dm", "E", "Em", "F", "G"];
-	const from = common[Math.floor(Math.random() * common.length)];
-	let to = from;
-	while (to === from) {
-		to = common[Math.floor(Math.random() * common.length)];
-	}
+	const pool = getChordsForDifficulty();
+	const candidates =
+		pool.length >= 2 ? pool : ["A", "Am", "C", "D", "Dm", "E", "Em", "F", "G"];
+
+	let from: string;
+	let to: string;
+	let attempts = 0;
+	do {
+		from = candidates[Math.floor(Math.random() * candidates.length)];
+		to = candidates[Math.floor(Math.random() * candidates.length)];
+		attempts++;
+	} while (
+		(to === from ||
+			(lastTransitionPair &&
+				from === lastTransitionPair.from &&
+				to === lastTransitionPair.to)) &&
+		attempts < 20
+	);
+
+	lastTransitionPair = { from, to };
 	return { from, to };
 }
 

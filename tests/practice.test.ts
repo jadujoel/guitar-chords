@@ -1,5 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import {
+	difficultySignal,
+	getChordsForDifficulty,
 	getDueChords,
 	getMasteryHeatmap,
 	masterySignal,
@@ -8,6 +10,7 @@ import {
 	practiceSignal,
 	recordAttempt,
 	recordPracticeDay,
+	resetQuizHistory,
 	streakSignal,
 } from "../src/practice";
 
@@ -26,6 +29,8 @@ beforeEach(() => {
 		totalSessions: 0,
 	});
 	masterySignal.set({});
+	difficultySignal.set("beginner");
+	resetQuizHistory();
 });
 
 // ── practiceSignal ──
@@ -144,4 +149,87 @@ test("getMasteryHeatmap returns data after attempts", () => {
 	const cEntry = heatmap.find((h) => h.chord === "C");
 	expect(cEntry).toBeTruthy();
 	expect(cEntry?.attempts).toBe(1);
+});
+
+// ── Difficulty ──
+test("difficultySignal defaults to beginner", () => {
+	expect(difficultySignal.get()).toBe("beginner");
+});
+
+test("getChordsForDifficulty returns beginner pool", () => {
+	const chords = getChordsForDifficulty("beginner");
+	expect(chords).toContain("C");
+	expect(chords).toContain("G");
+	expect(chords).toContain("Am");
+	expect(chords.length).toBeLessThanOrEqual(10);
+});
+
+test("getChordsForDifficulty intermediate has more chords than beginner", () => {
+	const beginner = getChordsForDifficulty("beginner");
+	const intermediate = getChordsForDifficulty("intermediate");
+	expect(intermediate.length).toBeGreaterThan(beginner.length);
+});
+
+test("getChordsForDifficulty advanced has more chords than intermediate", () => {
+	const intermediate = getChordsForDifficulty("intermediate");
+	const advanced = getChordsForDifficulty("advanced");
+	expect(advanced.length).toBeGreaterThan(intermediate.length);
+});
+
+test("getChordsForDifficulty uses signal when no arg", () => {
+	difficultySignal.set("advanced");
+	const chords = getChordsForDifficulty();
+	expect(chords.length).toBeGreaterThan(
+		getChordsForDifficulty("beginner").length,
+	);
+});
+
+// ── Quiz non-repetition ──
+test("pickQuizChord does not repeat same chord consecutively", () => {
+	resetQuizHistory();
+	const results: string[] = [];
+	for (let i = 0; i < 20; i++) {
+		const q = pickQuizChord();
+		if (q) results.push(q.chordName);
+	}
+	// Check no two consecutive chords are the same
+	for (let i = 1; i < results.length; i++) {
+		if (results.length > 2) {
+			// With beginner pool (8 chords), consecutive repeats should not happen
+			expect(results[i]).not.toBe(results[i - 1]);
+		}
+	}
+});
+
+test("pickQuizChord respects difficulty setting", () => {
+	difficultySignal.set("beginner");
+	resetQuizHistory();
+	const beginnerChords = getChordsForDifficulty("beginner");
+	for (let i = 0; i < 10; i++) {
+		const q = pickQuizChord();
+		if (q) {
+			expect(beginnerChords).toContain(q.chordName);
+		}
+	}
+});
+
+test("resetQuizHistory allows previously seen chords again", () => {
+	// Pick several chords to fill history
+	for (let i = 0; i < 5; i++) pickQuizChord();
+	resetQuizHistory();
+	// After reset, it should still work fine
+	const q = pickQuizChord();
+	expect(q).not.toBeNull();
+});
+
+// ── Transition pair non-repetition ──
+test("pickTransitionPair does not repeat same pair consecutively", () => {
+	const pairs: string[] = [];
+	for (let i = 0; i < 20; i++) {
+		const pair = pickTransitionPair();
+		pairs.push(`${pair.from}-${pair.to}`);
+	}
+	for (let i = 1; i < pairs.length; i++) {
+		expect(pairs[i]).not.toBe(pairs[i - 1]);
+	}
 });

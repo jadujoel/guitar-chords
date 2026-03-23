@@ -52,6 +52,8 @@ import { filterChordNames, getChordData } from "./chords";
 import { createFretboardPanel, type Fretboard } from "./fretboard";
 import { INSTRUMENTS, type Instrument, instrumentSignal } from "./instruments";
 import {
+	type Difficulty,
+	difficultySignal,
 	getMasteryHeatmap,
 	masterySignal,
 	type PracticeMode,
@@ -60,6 +62,7 @@ import {
 	practiceSignal,
 	recordAttempt,
 	recordPracticeDay,
+	resetQuizHistory,
 	streakSignal,
 } from "./practice";
 import {
@@ -2022,6 +2025,32 @@ function buildPracticePanel(panel: HTMLDivElement) {
 	}
 	panel.appendChild(modeBar);
 
+	// Difficulty selector
+	const difficultyBar = el("div", { className: "difficulty-selector" });
+	const diffLabel = el("label", {}, "Difficulty: ");
+	diffLabel.setAttribute("for", "difficulty-select");
+	difficultyBar.appendChild(diffLabel);
+	const diffSelect = document.createElement("select");
+	diffSelect.id = "difficulty-select";
+	diffSelect.className = "variation-selector";
+	const difficulties: { key: Difficulty; label: string }[] = [
+		{ key: "beginner", label: "Beginner" },
+		{ key: "intermediate", label: "Intermediate" },
+		{ key: "advanced", label: "Advanced" },
+	];
+	for (const d of difficulties) {
+		const opt = document.createElement("option");
+		opt.value = d.key;
+		opt.textContent = d.label;
+		if (d.key === difficultySignal.get()) opt.selected = true;
+		diffSelect.appendChild(opt);
+	}
+	diffSelect.onchange = () => {
+		difficultySignal.set(diffSelect.value as Difficulty);
+	};
+	difficultyBar.appendChild(diffSelect);
+	panel.appendChild(difficultyBar);
+
 	// Practice area
 	const practiceArea = el("div", { className: "practice-panel" });
 	practiceArea.appendChild(el("p", {}, "Select a practice mode above"));
@@ -2035,6 +2064,7 @@ function buildPracticePanel(panel: HTMLDivElement) {
 	const endSessionBtn = el("button", { className: "btn" });
 	endSessionBtn.textContent = "End Session";
 	endSessionBtn.style.display = "none";
+	endSessionBtn.style.margin = "0.5rem auto";
 	endSessionBtn.onclick = () => showSessionSummary();
 	panel.appendChild(endSessionBtn);
 
@@ -2073,6 +2103,7 @@ function buildPracticePanel(panel: HTMLDivElement) {
 
 	function startPractice(mode: PracticeMode) {
 		recordPracticeDay();
+		resetQuizHistory();
 		practiceSignal.set({
 			startTime: Date.now(),
 			chordsAttempted: [],
@@ -2134,16 +2165,18 @@ function buildPracticePanel(panel: HTMLDivElement) {
 		}
 		practiceArea.appendChild(svgDiv);
 
+		const actions = el("div", { className: "practice-actions" });
 		const answerInput = document.createElement("input");
 		answerInput.className = "practice-input";
 		answerInput.placeholder = "Type chord name…";
 		answerInput.setAttribute("autocomplete", "off");
-		practiceArea.appendChild(answerInput);
+		actions.appendChild(answerInput);
 
 		const submitBtn = el("button", { className: "btn btn-primary" });
 		submitBtn.textContent = "Check";
 		submitBtn.onclick = () => checkAnswer();
-		practiceArea.appendChild(submitBtn);
+		actions.appendChild(submitBtn);
+		practiceArea.appendChild(actions);
 
 		answerInput.onkeydown = (e) => {
 			if (e.key === "Enter") checkAnswer();
@@ -2198,11 +2231,12 @@ function buildPracticePanel(panel: HTMLDivElement) {
 
 		playChord(question.midiNotes);
 
+		const actions = el("div", { className: "practice-actions" });
 		const answerInput = document.createElement("input");
 		answerInput.className = "practice-input";
 		answerInput.placeholder = "Type chord name…";
 		answerInput.setAttribute("autocomplete", "off");
-		practiceArea.appendChild(answerInput);
+		actions.appendChild(answerInput);
 
 		const submitBtn = el("button", { className: "btn btn-primary" });
 		submitBtn.textContent = "Check";
@@ -2223,7 +2257,8 @@ function buildPracticePanel(panel: HTMLDivElement) {
 			updateStats();
 			setTimeout(() => startEarTraining(), 1500);
 		};
-		practiceArea.appendChild(submitBtn);
+		actions.appendChild(submitBtn);
+		practiceArea.appendChild(actions);
 		answerInput.focus();
 		answerInput.onkeydown = (e) => {
 			if (e.key === "Enter") submitBtn.click();

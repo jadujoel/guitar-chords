@@ -178,3 +178,6 @@ dist
 dist
 bun.lockb
 package-lock.json
+
+# Sound samples (downloaded via scripts/download-samples.ts)
+sound/
