@@ -2141,6 +2141,57 @@ async function run() {
 			);
 	});
 
+	// ── Test: Muted strings show X markers ──
+	await test("Muted strings display X indicators in chord SVG", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "D", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".chord svg");
+		// D major mutes strings 6 and 5 — svguitar renders X as lines with class "silent-string"
+		const silentStrings = await page.$$(".chord svg .silent-string");
+		if (silentStrings.length === 0)
+			throw new Error("Expected X indicators for muted strings on D chord");
+	});
+
+	// ── Test: Open strings show O markers ──
+	await test("Open strings display O indicators in chord SVG", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "C", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".chord svg");
+		// C major has open strings — svguitar renders O as circles with class "open-string"
+		const openStrings = await page.$$(".chord svg .open-string");
+		if (openStrings.length === 0)
+			throw new Error("Expected O indicators for open strings on C chord");
+	});
+
+	// ── Test: Root notes are highlighted ──
+	await test("Root notes have accent color highlighting", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "C", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".chord svg");
+		// Root note fingers should have the .root-note class
+		const rootNotes = await page.$$(".chord svg .root-note");
+		if (rootNotes.length === 0)
+			throw new Error("Expected root note highlighting on C chord");
+	});
+
 	await teardown();
 
 	console.log("\nDone!\n");

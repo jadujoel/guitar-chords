@@ -109,8 +109,47 @@ describe("getChordData", () => {
 		expect(chordData).toHaveProperty("fingers");
 		expect(chordData).toHaveProperty("position");
 		expect(chordData).toHaveProperty("barres");
-		expect(chordData).toHaveProperty("mutedStrings");
 		expect(typeof chordData.position).toBe("number");
+	});
+
+	test("muted strings are encoded as [string, 'x'] in fingers", () => {
+		const { chordData } = unwrap(getChordData("D", 0));
+		// D major: strings 6 and 5 are muted (frets = [-1, -1, 0, 2, 3, 2])
+		const mutedFingers = chordData.fingers.filter((f) => f[1] === "x");
+		expect(mutedFingers.length).toBeGreaterThanOrEqual(2);
+		const mutedStrings = mutedFingers.map((f) => f[0]);
+		expect(mutedStrings).toContain(6);
+		expect(mutedStrings).toContain(5);
+	});
+
+	test("open strings are encoded as [string, 0] in fingers", () => {
+		const { chordData } = unwrap(getChordData("C", 0));
+		// C major has open strings (e.g., high E string 1 is open)
+		const openFingers = chordData.fingers.filter((f) => f[1] === 0);
+		expect(openFingers.length).toBeGreaterThan(0);
+	});
+
+	test("root notes are highlighted with FingerOptions", () => {
+		const { chordData } = unwrap(getChordData("C", 0));
+		// C major: root is C (pitch class 0)
+		// String 5 fret 3 = C3 (MIDI 48, 48%12=0) — should be root
+		const rootFingers = chordData.fingers.filter(
+			(f) => typeof f[2] === "object" && f[2] !== null && "color" in f[2],
+		);
+		expect(rootFingers.length).toBeGreaterThan(0);
+	});
+
+	test("root note open strings have strokeColor", () => {
+		// E major: string 1 (high E) is open and is the root (pitch class 4)
+		const { chordData } = unwrap(getChordData("E", 0));
+		const openRoots = chordData.fingers.filter(
+			(f) =>
+				f[1] === 0 &&
+				typeof f[2] === "object" &&
+				f[2] !== null &&
+				"strokeColor" in f[2],
+		);
+		expect(openRoots.length).toBeGreaterThan(0);
 	});
 });
 

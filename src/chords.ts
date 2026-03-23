@@ -87,11 +87,13 @@ export interface ChordRenderData {
 		fingers: Finger[];
 		position: number;
 		barres: { fromString: number; toString: number; fret: number }[];
-		mutedStrings: number[];
 	};
 	totalVariations: number;
 	midiNotes: number[];
 }
+
+/** Color used to highlight root-note fingers and open-string indicators */
+const ROOT_COLOR = "#8b5cf6";
 
 export function getChordData(
 	chordName: string,
@@ -117,21 +119,37 @@ export function getChordData(
 
 	const midiNotes = position.midi;
 	const fingers: Finger[] = [];
-	const mutedStrings: number[] = [];
 	const baseFret = position.baseFret;
+	const rootPc = ROOT_PITCH_CLASS[root];
 
 	position.frets.forEach((fret, index) => {
 		const string = 6 - index;
 		if (fret === -1) {
-			mutedStrings.push(string);
-		} else if (fret > 0) {
-			fingers.push([
-				string,
-				fret,
-				position.fingers[index] > 0
-					? position.fingers[index].toString()
-					: undefined,
-			]);
+			fingers.push([string, "x"]);
+		} else {
+			const midi = OPEN_STRING_MIDI[index] + fret + (baseFret - 1);
+			const isRoot = rootPc !== undefined && midi % 12 === rootPc;
+			if (fret === 0) {
+				fingers.push([
+					string,
+					0,
+					isRoot ? { strokeColor: ROOT_COLOR, strokeWidth: 3 } : undefined,
+				]);
+			} else {
+				const fingerNum = position.fingers[index];
+				const label = fingerNum > 0 ? fingerNum.toString() : undefined;
+				fingers.push([
+					string,
+					fret,
+					isRoot
+						? {
+								text: label,
+								color: ROOT_COLOR,
+								className: "root-note",
+							}
+						: label,
+				]);
+			}
 		}
 	});
 
@@ -146,7 +164,6 @@ export function getChordData(
 			fingers,
 			position: baseFret === 1 ? 0 : baseFret - 1,
 			barres,
-			mutedStrings,
 		},
 		totalVariations: chord.positions.length,
 		midiNotes,
