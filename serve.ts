@@ -2,7 +2,7 @@ import { build } from "./build";
 
 const server = Bun.serve({
 	hostname: "127.0.0.1",
-	port: 0,
+	port: Number(process.env.PORT ?? 0),
 	async fetch(request) {
 		if (request.method !== "GET") {
 			return new Response("Method Not Allowed", { status: 405 });

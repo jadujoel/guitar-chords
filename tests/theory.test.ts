@@ -50,14 +50,19 @@ test("indexToNote returns flat names when preferFlats is true", () => {
 
 // ── getScaleNotes ──
 test("C Major scale has correct notes", () => {
-	const major = SCALES.find((s) => s.name === "Major")!;
-	const notes = getScaleNotes("C", major);
+	const major = SCALES.find((s) => s.name === "Major");
+	expect(major).toBeTruthy();
+	const notes = getScaleNotes("C", major as (typeof SCALES)[number]);
 	expect(notes).toEqual(["C", "D", "E", "F", "G", "A", "B"]);
 });
 
 test("getScalePitchClasses returns correct pitch classes", () => {
-	const major = SCALES.find((s) => s.name === "Major")!;
-	const pitchClasses = getScalePitchClasses("C", major);
+	const major = SCALES.find((s) => s.name === "Major");
+	expect(major).toBeTruthy();
+	const pitchClasses = getScalePitchClasses(
+		"C",
+		major as (typeof SCALES)[number],
+	);
 	expect(pitchClasses).toEqual([0, 2, 4, 5, 7, 9, 11]);
 });
 
@@ -83,8 +88,13 @@ test("getDiatonicChords returns roman numerals", () => {
 
 // ── buildProgression ──
 test("buildProgression builds Pop progression in C", () => {
-	const pop = PROGRESSION_PRESETS.find((p) => p.name.startsWith("Pop"))!;
-	const chords = buildProgression("C", pop, false);
+	const pop = PROGRESSION_PRESETS.find((p) => p.name.startsWith("Pop"));
+	expect(pop).toBeTruthy();
+	const chords = buildProgression(
+		"C",
+		pop as (typeof PROGRESSION_PRESETS)[number],
+		false,
+	);
 	expect(chords.length).toBe(4);
 	expect(chords).toContain("C");
 	expect(chords).toContain("G");

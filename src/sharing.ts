@@ -1,5 +1,6 @@
 /** Sharing & Export: URL sharing, PDF/PNG export, QR code, SVG copy */
 
+import { encodeQR } from "./qr";
 import type { Song } from "./songs";
 import type { ChordItem } from "./state";
 
@@ -143,82 +144,43 @@ export async function copySvgToClipboard(svgElement: SVGSVGElement) {
 
 // ─── QR Code ───────────────────────────────────────────
 
-/** Generate a simple QR code as SVG (minimal implementation) */
+/** Generate a real QR code as SVG using built-in encoder */
 export function generateQRCodeSvg(data: string, size = 200): SVGSVGElement {
-	// Simple QR-like visual using data matrix pattern
-	// For production, use a proper QR library; this creates a visual placeholder
+	const modules = encodeQR(data);
+	const moduleCount = modules.length;
+	const quiet = 4; // quiet zone modules
+	const total = moduleCount + quiet * 2;
+	const cellSize = size / total;
+
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 	svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
 	svg.setAttribute("width", String(size));
 	svg.setAttribute("height", String(size));
 
-	// Background
+	// White background
 	const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
 	bg.setAttribute("width", String(size));
 	bg.setAttribute("height", String(size));
 	bg.setAttribute("fill", "white");
 	svg.appendChild(bg);
 
-	// Generate a deterministic pattern from data
-	const modules = 25;
-	const cellSize = size / modules;
-	const bytes = new TextEncoder().encode(data);
-
-	for (let row = 0; row < modules; row++) {
-		for (let col = 0; col < modules; col++) {
-			const byteIdx = (row * modules + col) % bytes.length;
-			const bitIdx = (row * modules + col) % 8;
-			const filled =
-				(bytes[byteIdx] >> bitIdx) & 1 ||
-				// Finder patterns (corners)
-				(row < 7 && col < 7) ||
-				(row < 7 && col >= modules - 7) ||
-				(row >= modules - 7 && col < 7);
-
-			if (filled) {
-				// Leave white border in finder patterns
-				const inFinderBorder =
-					(row < 7 &&
-						col < 7 &&
-						(row === 0 || row === 6 || col === 0 || col === 6)) ||
-					(row < 7 &&
-						col >= modules - 7 &&
-						(row === 0 ||
-							row === 6 ||
-							col === modules - 7 ||
-							col === modules - 1)) ||
-					(row >= modules - 7 &&
-						col < 7 &&
-						(row === modules - 7 ||
-							row === modules - 1 ||
-							col === 0 ||
-							col === 6));
-
-				const inFinderInner =
-					(row >= 2 && row <= 4 && col >= 2 && col <= 4) ||
-					(row >= 2 && row <= 4 && col >= modules - 5 && col <= modules - 3) ||
-					(row >= modules - 5 && row <= modules - 3 && col >= 2 && col <= 4);
-
-				if (
-					inFinderBorder ||
-					inFinderInner ||
-					(!(row < 7 && col < 7) &&
-						!(row < 7 && col >= modules - 7) &&
-						!(row >= modules - 7 && col < 7))
-				) {
-					const rect = document.createElementNS(
-						"http://www.w3.org/2000/svg",
-						"rect",
-					);
-					rect.setAttribute("x", String(col * cellSize));
-					rect.setAttribute("y", String(row * cellSize));
-					rect.setAttribute("width", String(cellSize));
-					rect.setAttribute("height", String(cellSize));
-					rect.setAttribute("fill", "black");
-					svg.appendChild(rect);
-				}
+	// Build a single path for all dark modules (much more efficient than individual rects)
+	let pathData = "";
+	for (let row = 0; row < moduleCount; row++) {
+		for (let col = 0; col < moduleCount; col++) {
+			if (modules[row][col]) {
+				const x = (col + quiet) * cellSize;
+				const y = (row + quiet) * cellSize;
+				pathData += `M${x},${y}h${cellSize}v${cellSize}h${-cellSize}z`;
 			}
 		}
+	}
+
+	if (pathData) {
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", pathData);
+		path.setAttribute("fill", "black");
+		svg.appendChild(path);
 	}
 
 	return svg;

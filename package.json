@@ -3,6 +3,7 @@
 	"module": "index.ts",
 	"type": "module",
 	"scripts": {
+		"dev": "bun --hot serve.ts",
 		"lint": "bunx biome lint"
 	},
 	"devDependencies": {

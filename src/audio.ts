@@ -1,15 +1,54 @@
 /**
  * Enhanced Audio engine: WebAudioFont chord playback with
  * strum direction, adjustable speed/volume/reverb, loop, metronome, single-note playback.
+ * Supports multiple guitar tones.
  */
 
 import { createSignal } from "./state";
+
+// ─── Guitar Tone Definitions ───────────────────────────
+export type GuitarTone = "nylon" | "steel" | "clean" | "overdriven";
+
+export interface ToneConfig {
+	name: string;
+	variable: string;
+	url: string;
+}
+
+export const GUITAR_TONES: Record<GuitarTone, ToneConfig> = {
+	nylon: {
+		name: "Nylon",
+		variable: "_tone_0250_FluidR3_GM_sf2_file",
+		url: "https://surikov.github.io/webaudiofontdata/sound/0250_FluidR3_GM_sf2_file.js",
+	},
+	steel: {
+		name: "Steel",
+		variable: "_tone_0260_FluidR3_GM_sf2_file",
+		url: "https://surikov.github.io/webaudiofontdata/sound/0260_FluidR3_GM_sf2_file.js",
+	},
+	clean: {
+		name: "Clean Electric",
+		variable: "_tone_0270_FluidR3_GM_sf2_file",
+		url: "https://surikov.github.io/webaudiofontdata/sound/0270_FluidR3_GM_sf2_file.js",
+	},
+	overdriven: {
+		name: "Overdriven",
+		variable: "_tone_0290_FluidR3_GM_sf2_file",
+		url: "https://surikov.github.io/webaudiofontdata/sound/0290_FluidR3_GM_sf2_file.js",
+	},
+};
 
 // ─── Audio Context & Player (lazy initialization) ──────
 let _audioContext: AudioContext | null = null;
 let _player: typeof WebAudioFontPlayer.prototype | null = null;
 let _masterGain: GainNode | null = null;
 let _initialized = false;
+const _loadedTones = new Set<GuitarTone>(["nylon"]);
+
+function getMasterGain(): GainNode {
+	if (!_masterGain) throw new Error("Audio not initialized");
+	return _masterGain;
+}
 
 function getCtx(): AudioContext {
 	if (!_audioContext) {
@@ -89,6 +128,42 @@ export type StrumDirection = "down" | "up" | "fingerpick" | "arpeggio";
 export const strumDirectionSignal = createSignal<StrumDirection>("down");
 export const loopSignal = createSignal(false);
 export const bpmSignal = createSignal(120);
+export const toneSignal = createSignal<GuitarTone>("nylon");
+
+function getActiveSoundfont(): unknown {
+	const tone = toneSignal.get();
+	const config = GUITAR_TONES[tone];
+	// biome-ignore lint/suspicious/noExplicitAny: WebAudioFont globals
+	return (globalThis as any)[config.variable] ?? _tone_0250_FluidR3_GM_sf2_file;
+}
+
+export async function loadTone(tone: GuitarTone): Promise<void> {
+	if (_loadedTones.has(tone)) {
+		toneSignal.set(tone);
+		return;
+	}
+	const config = GUITAR_TONES[tone];
+	// Load the soundfont script dynamically
+	return new Promise((resolve, reject) => {
+		const script = document.createElement("script");
+		script.src = config.url;
+		script.onload = () => {
+			_loadedTones.add(tone);
+			// Pre-decode the new soundfont
+			const ctx = getCtx();
+			const player = getPlayer();
+			// biome-ignore lint/suspicious/noExplicitAny: WebAudioFont globals
+			const sf = (globalThis as any)[config.variable];
+			if (sf) {
+				player.loader.decodeAfterLoading(ctx, config.variable);
+			}
+			toneSignal.set(tone);
+			resolve();
+		};
+		script.onerror = () => reject(new Error(`Failed to load tone: ${tone}`));
+		document.head.appendChild(script);
+	});
+}
 
 function createReverbImpulse(
 	ctx: AudioContext,
@@ -120,8 +195,8 @@ export function playNote(midi: number, duration = 1.5, velocity = 0.7) {
 	const ctx = getCtx();
 	getPlayer().queueWaveTable(
 		ctx,
-		_masterGain!,
-		_tone_0250_FluidR3_GM_sf2_file,
+		getMasterGain(),
+		getActiveSoundfont(),
 		ctx.currentTime,
 		midi,
 		duration,
@@ -161,8 +236,8 @@ export function playChord(midiNotes: number[]) {
 		const velocity = 0.65 + Math.random() * 0.35;
 		getPlayer().queueWaveTable(
 			ctx,
-			_masterGain!,
-			_tone_0250_FluidR3_GM_sf2_file,
+			getMasterGain(),
+			getActiveSoundfont(),
 			time,
 			orderedNotes[i],
 			duration,

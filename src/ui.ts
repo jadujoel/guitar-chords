@@ -23,10 +23,14 @@ import {
 import { SVGuitarChord } from "svguitar";
 import {
 	bpmSignal,
+	GUITAR_TONES,
+	type GuitarTone,
+	loadTone,
 	metronomeSignal,
 	mutedSignal,
 	onMetronomeBeat,
 	playChord,
+	playNote,
 	resumeAudio,
 	reverbSignal,
 	type StrumDirection,
@@ -38,6 +42,7 @@ import {
 	strumSpeedSignal,
 	type TimeSignature,
 	tapTempo,
+	toneSignal,
 	volumeSignal,
 } from "./audio";
 import { findChordByNotes } from "./chord-finder";
@@ -503,6 +508,33 @@ function buildChordsPanel(panel: HTMLDivElement) {
 	speedGroup.appendChild(speedSlider);
 	audioCtrl.appendChild(speedGroup);
 
+	// Guitar tone selector
+	const toneGroup = el("div", { className: "audio-control-group" });
+	toneGroup.appendChild(el("label", {}, "Tone"));
+	const toneSelect = document.createElement("select");
+	toneSelect.className = "tone-selector";
+	for (const [key, config] of Object.entries(GUITAR_TONES)) {
+		const opt = document.createElement("option");
+		opt.value = key;
+		opt.textContent = config.name;
+		if (key === toneSignal.get()) opt.selected = true;
+		toneSelect.appendChild(opt);
+	}
+	toneSelect.onchange = async () => {
+		const tone = toneSelect.value as GuitarTone;
+		toneSelect.disabled = true;
+		try {
+			await loadTone(tone);
+			toast(`Tone: ${GUITAR_TONES[tone].name}`, "info");
+		} catch {
+			toast("Failed to load tone", "error");
+			toneSelect.value = toneSignal.get();
+		}
+		toneSelect.disabled = false;
+	};
+	toneGroup.appendChild(toneSelect);
+	audioCtrl.appendChild(toneGroup);
+
 	panel.appendChild(audioCtrl);
 
 	// ── Metronome ──
@@ -639,21 +671,20 @@ function buildChordsPanel(panel: HTMLDivElement) {
 	capoSelect.onchange = () => updateCapoDisplay(Number(capoSelect.value));
 	transposeBar.appendChild(capoSelect);
 
-	const capoInfo = el("span", { className: "capo-display" });
+	const capoInfo = el("div", { className: "capo-info-row" });
 	transposeBar.appendChild(capoInfo);
 	panel.appendChild(transposeBar);
 
 	function updateCapoDisplay(capo: number) {
-		if (capo === 0) {
-			capoInfo.textContent = "";
-			return;
-		}
+		capoInfo.innerHTML = "";
+		if (capo === 0) return;
 		const items = chordsSignal.get();
-		const parts = items.map((c) => {
+		for (const c of items) {
 			const w = withCapo(c.name, capo);
-			return `${c.name}→${w.playAs}`;
-		});
-		capoInfo.textContent = parts.length > 0 ? `Play: ${parts.join(", ")}` : "";
+			const chip = el("span", { className: "capo-chip" });
+			chip.innerHTML = `Play <strong>${w.playAs}</strong> <span class="sounds-like">(sounds ${w.soundsLike})</span>`;
+			capoInfo.appendChild(chip);
+		}
 	}
 
 	function transposeAll(semitones: number) {
@@ -769,6 +800,12 @@ function buildChordsPanel(panel: HTMLDivElement) {
 
 // ═══ Fretboard Tab ═══
 function buildFretboardTab(panel: HTMLDivElement) {
+	// Track clicked notes for chord finder
+	const clickedNotes: Set<number> = new Set();
+	const clickedNotesDisplay = el("div", {
+		className: "capo-info-row selected-notes",
+	});
+
 	const fbPanel = createFretboardPanel(() => {});
 	// Remove close button since this is a tab
 	const closeBtn = fbPanel.querySelector(".fretboard-header .btn-icon");
@@ -789,6 +826,23 @@ function buildFretboardTab(panel: HTMLDivElement) {
 				}
 			}
 		});
+
+		// Wire up fretboard click for chord finder
+		fb.setOptions({
+			showNoteNames: true,
+			onNoteClick: (midi: number) => {
+				resumeAudio();
+				playNote(midi);
+				const pc = midi % 12;
+				if (clickedNotes.has(pc)) {
+					clickedNotes.delete(pc);
+				} else {
+					clickedNotes.add(pc);
+				}
+				updateClickedNotesDisplay();
+				updateFinderFromClicked();
+			},
+		});
 	}
 
 	// Chord finder section
@@ -798,9 +852,21 @@ function buildFretboardTab(panel: HTMLDivElement) {
 		el(
 			"p",
 			{ className: "capo-display" },
-			"Enter notes (comma-separated, e.g. C,E,G):",
+			"Click notes on the fretboard above, or type notes below:",
 		),
 	);
+
+	finder.appendChild(clickedNotesDisplay);
+
+	const clearClickedBtn = el("button", { className: "btn" });
+	clearClickedBtn.textContent = "Clear";
+	clearClickedBtn.style.marginBottom = "0.5rem";
+	clearClickedBtn.onclick = () => {
+		clickedNotes.clear();
+		updateClickedNotesDisplay();
+		finderResults.innerHTML = "";
+	};
+	finder.appendChild(clearClickedBtn);
 
 	const finderInput = document.createElement("input");
 	finderInput.type = "text";
@@ -813,37 +879,59 @@ function buildFretboardTab(panel: HTMLDivElement) {
 	const finderResults = el("div", { className: "finder-results" });
 	finder.appendChild(finderResults);
 
-	finderInput.oninput = () => {
-		const notes = finderInput.value
-			.split(",")
-			.map((n) => n.trim())
-			.filter(Boolean);
-		if (notes.length < 2) {
+	const NOTE_MAP: Record<string, number> = {
+		C: 0,
+		"C#": 1,
+		Db: 1,
+		D: 2,
+		"D#": 3,
+		Eb: 3,
+		E: 4,
+		F: 5,
+		"F#": 6,
+		Gb: 6,
+		G: 7,
+		"G#": 8,
+		Ab: 8,
+		A: 9,
+		"A#": 10,
+		Bb: 10,
+		B: 11,
+	};
+	const NOTE_NAMES_FINDER = [
+		"C",
+		"C#",
+		"D",
+		"D#",
+		"E",
+		"F",
+		"F#",
+		"G",
+		"G#",
+		"A",
+		"A#",
+		"B",
+	];
+
+	function updateClickedNotesDisplay() {
+		clickedNotesDisplay.innerHTML = "";
+		if (clickedNotes.size === 0) return;
+		for (const pc of clickedNotes) {
+			const chip = el("span", { className: "capo-chip" });
+			chip.textContent = NOTE_NAMES_FINDER[pc];
+			clickedNotesDisplay.appendChild(chip);
+		}
+	}
+
+	function updateFinderFromClicked() {
+		if (clickedNotes.size < 2) {
 			finderResults.innerHTML = "";
 			return;
 		}
-		const NOTE_MAP: Record<string, number> = {
-			C: 0,
-			"C#": 1,
-			Db: 1,
-			D: 2,
-			"D#": 3,
-			Eb: 3,
-			E: 4,
-			F: 5,
-			"F#": 6,
-			Gb: 6,
-			G: 7,
-			"G#": 8,
-			Ab: 8,
-			A: 9,
-			"A#": 10,
-			Bb: 10,
-			B: 11,
-		};
-		const indices = notes
-			.map((n) => NOTE_MAP[n.charAt(0).toUpperCase() + n.slice(1)] ?? -1)
-			.filter((n) => n >= 0);
+		renderFinderResults(Array.from(clickedNotes));
+	}
+
+	function renderFinderResults(indices: number[]) {
 		const matches = findChordByNotes(indices);
 		finderResults.innerHTML = "";
 		for (const m of matches) {
@@ -855,6 +943,21 @@ function buildFretboardTab(panel: HTMLDivElement) {
 			};
 			finderResults.appendChild(item);
 		}
+	}
+
+	finderInput.oninput = () => {
+		const notes = finderInput.value
+			.split(",")
+			.map((n) => n.trim())
+			.filter(Boolean);
+		if (notes.length < 2) {
+			finderResults.innerHTML = "";
+			return;
+		}
+		const indices = notes
+			.map((n) => NOTE_MAP[n.charAt(0).toUpperCase() + n.slice(1)] ?? -1)
+			.filter((n) => n >= 0);
+		renderFinderResults(indices);
 	};
 
 	panel.appendChild(finder);
@@ -1096,6 +1199,19 @@ function buildProgressionPanel(panel: HTMLDivElement) {
 	};
 	controls.appendChild(addAllBtn);
 
+	// Nashville number toggle
+	let showNashville = false;
+	const nashvilleLabel = el("label", { className: "fb-toggle" });
+	const nashvilleCheck = document.createElement("input");
+	nashvilleCheck.type = "checkbox";
+	nashvilleLabel.appendChild(nashvilleCheck);
+	nashvilleLabel.appendChild(document.createTextNode("Nashville #"));
+	nashvilleCheck.onchange = () => {
+		showNashville = nashvilleCheck.checked;
+		renderStrip();
+	};
+	controls.appendChild(nashvilleLabel);
+
 	// Roman numeral analysis
 	const romanDisplay = el("div", { className: "key-detected" });
 	controls.appendChild(romanDisplay);
@@ -1118,7 +1234,10 @@ function buildProgressionPanel(panel: HTMLDivElement) {
 		for (let i = 0; i < prog.items.length; i++) {
 			const item = prog.items[i];
 			const div = el("div", { className: "progression-item" });
-			div.appendChild(el("div", { className: "chord-label" }, item.chordName));
+			const displayName = showNashville
+				? toNashvilleNumber(item.chordName, prog.key)
+				: item.chordName;
+			div.appendChild(el("div", { className: "chord-label" }, displayName));
 			div.appendChild(
 				el("div", { className: "beats-label" }, `${item.beats} beats`),
 			);
@@ -1308,6 +1427,20 @@ function buildSongsPanel(panel: HTMLDivElement) {
 			);
 			card.appendChild(info);
 
+			const perfBtn = el("button", { className: "btn btn-icon" });
+			perfBtn.appendChild(icon(Play, 14));
+			perfBtn.title = "Performance mode";
+			perfBtn.onclick = (e) => {
+				e.stopPropagation();
+				const songs = songsSignal.get();
+				const setlistSongs = sl.songIds
+					.map((id) => songs.find((s) => s.id === id))
+					.filter((s): s is Song => s !== undefined);
+				if (setlistSongs.length > 0) openPerformanceMode(setlistSongs, 0);
+				else toast("No songs in setlist", "error");
+			};
+			card.appendChild(perfBtn);
+
 			const delBtn = el("button", { className: "btn btn-icon btn-remove" });
 			delBtn.appendChild(icon(Trash2, 14));
 			delBtn.onclick = () => deleteSetlist(sl.id);
@@ -1336,6 +1469,43 @@ function buildSongsPanel(panel: HTMLDivElement) {
 			const lyricsDiv = el("div", { className: "lyrics-display" });
 			lyricsDiv.textContent = song.lyrics;
 			songDetail.appendChild(lyricsDiv);
+
+			// Auto-scroll controls
+			let scrollInterval: ReturnType<typeof setInterval> | null = null;
+			let scrollSpeed = 1;
+			const scrollControls = el("div", { className: "auto-scroll-controls" });
+			const scrollBtn = el("button", { className: "btn" });
+			scrollBtn.textContent = "Auto-scroll";
+			const speedSlider = document.createElement("input");
+			speedSlider.type = "range";
+			speedSlider.min = "0.5";
+			speedSlider.max = "5";
+			speedSlider.step = "0.5";
+			speedSlider.value = "1";
+			speedSlider.style.flex = "1";
+			const speedLabel = el("span", { className: "capo-display" }, "1x");
+			speedSlider.oninput = () => {
+				scrollSpeed = Number(speedSlider.value);
+				speedLabel.textContent = `${scrollSpeed}x`;
+			};
+			scrollBtn.onclick = () => {
+				if (scrollInterval) {
+					clearInterval(scrollInterval);
+					scrollInterval = null;
+					scrollBtn.textContent = "Auto-scroll";
+					scrollBtn.classList.remove("btn-primary");
+				} else {
+					scrollInterval = setInterval(() => {
+						lyricsDiv.scrollTop += scrollSpeed;
+					}, 50);
+					scrollBtn.textContent = "Stop scroll";
+					scrollBtn.classList.add("btn-primary");
+				}
+			};
+			scrollControls.appendChild(scrollBtn);
+			scrollControls.appendChild(speedSlider);
+			scrollControls.appendChild(speedLabel);
+			songDetail.appendChild(scrollControls);
 		}
 
 		if (song.chords.length > 0) {
@@ -1353,12 +1523,19 @@ function buildSongsPanel(panel: HTMLDivElement) {
 			songDetail.appendChild(chordRow);
 		}
 
+		const actionRow = el("div", { className: "scale-selector" });
+		const perfBtn = el("button", { className: "btn btn-primary" });
+		perfBtn.textContent = "Performance Mode";
+		perfBtn.onclick = () => openPerformanceMode([song], 0);
+		actionRow.appendChild(perfBtn);
+
 		const closeBtn = el("button", { className: "btn" });
 		closeBtn.textContent = "Close";
 		closeBtn.onclick = () => {
 			songDetail.style.display = "none";
 		};
-		songDetail.appendChild(closeBtn);
+		actionRow.appendChild(closeBtn);
+		songDetail.appendChild(actionRow);
 	}
 
 	function openSongEditor(existing?: Song) {
@@ -1482,6 +1659,205 @@ function buildSongsPanel(panel: HTMLDivElement) {
 	setlistsSignal.subscribe(renderSetlistList);
 	renderSongList();
 	renderSetlistList();
+}
+
+// ═══ Performance Mode (Fullscreen setlist/song view) ═══
+function openPerformanceMode(songs: Song[], startIdx: number) {
+	let currentIdx = startIdx;
+	let scrollInterval: ReturnType<typeof setInterval> | null = null;
+	let scrollSpeed = 1;
+
+	const overlay = el("div", { className: "performance-overlay" });
+
+	function renderSong() {
+		overlay.innerHTML = "";
+		const song = songs[currentIdx];
+
+		// Header
+		const header = el("div", { className: "performance-header" });
+		header.appendChild(el("h2", {}, song.title));
+		if (song.artist)
+			header.appendChild(
+				el("span", { className: "capo-display" }, `by ${song.artist}`),
+			);
+		header.appendChild(
+			el(
+				"span",
+				{ className: "capo-display" },
+				`Key: ${song.key} • ${song.tempo} BPM`,
+			),
+		);
+		const exitBtn = el("button", { className: "btn" });
+		exitBtn.textContent = "Exit";
+		exitBtn.onclick = () => {
+			if (scrollInterval) clearInterval(scrollInterval);
+			overlay.remove();
+		};
+		header.appendChild(exitBtn);
+		overlay.appendChild(header);
+
+		// Body
+		const body = el("div", { className: "performance-body" });
+
+		// Chords
+		if (song.chords.length > 0) {
+			const chordRow = el("div", { className: "performance-chords" });
+			for (const c of song.chords) {
+				const badge = el("span", { className: "chord-badge" });
+				badge.textContent = c.chordName;
+				badge.style.cursor = "pointer";
+				badge.onclick = () => {
+					const data = getChordData(c.chordName, 0);
+					if (data) playChord(data.midiNotes);
+				};
+				chordRow.appendChild(badge);
+			}
+			body.appendChild(chordRow);
+		}
+
+		// Lyrics
+		if (song.lyrics) {
+			const lyricsDiv = el("div", { className: "performance-lyrics" });
+			lyricsDiv.textContent = song.lyrics;
+			body.appendChild(lyricsDiv);
+
+			// Auto-scroll
+			const scrollControls = el("div", { className: "auto-scroll-controls" });
+			const scrollBtn = el("button", { className: "btn" });
+			scrollBtn.textContent = "Auto-scroll";
+			const sSlider = document.createElement("input");
+			sSlider.type = "range";
+			sSlider.min = "0.5";
+			sSlider.max = "5";
+			sSlider.step = "0.5";
+			sSlider.value = String(scrollSpeed);
+			sSlider.style.flex = "1";
+			const sLabel = el(
+				"span",
+				{ className: "capo-display" },
+				`${scrollSpeed}x`,
+			);
+			sSlider.oninput = () => {
+				scrollSpeed = Number(sSlider.value);
+				sLabel.textContent = `${scrollSpeed}x`;
+			};
+			scrollBtn.onclick = () => {
+				if (scrollInterval) {
+					clearInterval(scrollInterval);
+					scrollInterval = null;
+					scrollBtn.textContent = "Auto-scroll";
+					scrollBtn.classList.remove("btn-primary");
+				} else {
+					scrollInterval = setInterval(() => {
+						body.scrollTop += scrollSpeed;
+					}, 50);
+					scrollBtn.textContent = "Stop scroll";
+					scrollBtn.classList.add("btn-primary");
+				}
+			};
+			scrollControls.appendChild(scrollBtn);
+			scrollControls.appendChild(sSlider);
+			scrollControls.appendChild(sLabel);
+			body.appendChild(scrollControls);
+		}
+
+		overlay.appendChild(body);
+
+		// Navigation
+		if (songs.length > 1) {
+			const nav = el("div", { className: "performance-nav" });
+			const prevBtn = el("button", { className: "btn" });
+			prevBtn.textContent = "← Previous";
+			prevBtn.disabled = currentIdx === 0;
+			prevBtn.onclick = () => {
+				if (currentIdx > 0) {
+					currentIdx--;
+					if (scrollInterval) {
+						clearInterval(scrollInterval);
+						scrollInterval = null;
+					}
+					renderSong();
+				}
+			};
+			nav.appendChild(prevBtn);
+
+			nav.appendChild(el("span", {}, `${currentIdx + 1} / ${songs.length}`));
+
+			const nextBtn = el("button", { className: "btn" });
+			nextBtn.textContent = "Next →";
+			nextBtn.disabled = currentIdx === songs.length - 1;
+			nextBtn.onclick = () => {
+				if (currentIdx < songs.length - 1) {
+					currentIdx++;
+					if (scrollInterval) {
+						clearInterval(scrollInterval);
+						scrollInterval = null;
+					}
+					renderSong();
+				}
+			};
+			nav.appendChild(nextBtn);
+			overlay.appendChild(nav);
+		}
+	}
+
+	renderSong();
+
+	// Swipe navigation between songs
+	let touchStartPerf = 0;
+	overlay.addEventListener(
+		"touchstart",
+		(e) => {
+			touchStartPerf = e.touches[0].clientX;
+		},
+		{ passive: true },
+	);
+	overlay.addEventListener("touchend", (e) => {
+		const delta = e.changedTouches[0].clientX - touchStartPerf;
+		if (Math.abs(delta) > 80) {
+			if (delta < 0 && currentIdx < songs.length - 1) {
+				currentIdx++;
+				if (scrollInterval) {
+					clearInterval(scrollInterval);
+					scrollInterval = null;
+				}
+				renderSong();
+			} else if (delta > 0 && currentIdx > 0) {
+				currentIdx--;
+				if (scrollInterval) {
+					clearInterval(scrollInterval);
+					scrollInterval = null;
+				}
+				renderSong();
+			}
+		}
+	});
+
+	// Keyboard navigation
+	overlay.tabIndex = 0;
+	overlay.addEventListener("keydown", (e) => {
+		if (e.key === "Escape") {
+			if (scrollInterval) clearInterval(scrollInterval);
+			overlay.remove();
+		} else if (e.key === "ArrowRight" && currentIdx < songs.length - 1) {
+			currentIdx++;
+			if (scrollInterval) {
+				clearInterval(scrollInterval);
+				scrollInterval = null;
+			}
+			renderSong();
+		} else if (e.key === "ArrowLeft" && currentIdx > 0) {
+			currentIdx--;
+			if (scrollInterval) {
+				clearInterval(scrollInterval);
+				scrollInterval = null;
+			}
+			renderSong();
+		}
+	});
+
+	document.body.appendChild(overlay);
+	overlay.focus();
 }
 
 // ═══ Theory Panel ═══
@@ -1645,6 +2021,13 @@ function buildPracticePanel(panel: HTMLDivElement) {
 	const statsArea = el("div", { className: "practice-stats" });
 	panel.appendChild(statsArea);
 
+	// End session button
+	const endSessionBtn = el("button", { className: "btn" });
+	endSessionBtn.textContent = "End Session";
+	endSessionBtn.style.display = "none";
+	endSessionBtn.onclick = () => showSessionSummary();
+	panel.appendChild(endSessionBtn);
+
 	// Mastery heatmap
 	const masterySection = el("div", { className: "theory-panel" });
 	masterySection.appendChild(el("h3", {}, "Mastery Heatmap"));
@@ -1687,6 +2070,8 @@ function buildPracticePanel(panel: HTMLDivElement) {
 			totalCount: 0,
 			mode,
 		});
+
+		endSessionBtn.style.display = "block";
 
 		modeBar.querySelectorAll(".instrument-btn").forEach((b, i) => {
 			b.classList.toggle("active", modes[i].key === mode);
@@ -1869,6 +2254,43 @@ function buildPracticePanel(panel: HTMLDivElement) {
 			correctCount: s.correctCount + 1,
 		}));
 		updateStats();
+	}
+
+	function showSessionSummary() {
+		const s = practiceSignal.get();
+		if (s.totalCount === 0) {
+			toast("No attempts recorded yet", "error");
+			return;
+		}
+		const elapsed = Math.floor((Date.now() - s.startTime) / 1000);
+		const mins = Math.floor(elapsed / 60);
+		const secs = elapsed % 60;
+		const accuracy = Math.round((s.correctCount / s.totalCount) * 100);
+		const uniqueChords = [...new Set(s.chordsAttempted)];
+
+		const overlay = el("div", { className: "session-summary" });
+		overlay.innerHTML = `
+			<h2>Session Complete!</h2>
+			<div class="summary-stats">
+				<div class="practice-stat"><div class="stat-value">${s.correctCount}/${s.totalCount}</div><div class="stat-label">Score</div></div>
+				<div class="practice-stat"><div class="stat-value">${accuracy}%</div><div class="stat-label">Accuracy</div></div>
+				<div class="practice-stat"><div class="stat-value">${mins}:${secs.toString().padStart(2, "0")}</div><div class="stat-label">Time</div></div>
+				<div class="practice-stat"><div class="stat-value">${uniqueChords.length}</div><div class="stat-label">Chords</div></div>
+			</div>
+			<p>Chords practiced: ${uniqueChords.join(", ") || "—"}</p>
+		`;
+		const closeBtn = el("button", { className: "btn btn-primary" });
+		closeBtn.textContent = "Close";
+		closeBtn.onclick = () => {
+			overlay.remove();
+			endSessionBtn.style.display = "none";
+			practiceArea.innerHTML = "";
+			practiceArea.appendChild(el("p", {}, "Select a practice mode above"));
+			statsArea.innerHTML = "";
+			renderMastery();
+		};
+		overlay.appendChild(closeBtn);
+		document.body.appendChild(overlay);
 	}
 }
 

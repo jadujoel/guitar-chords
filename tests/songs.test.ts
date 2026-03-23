@@ -104,8 +104,9 @@ test("addSongToSetlist adds song id", () => {
 	const song = createSong();
 	addSong(song);
 	addSongToSetlist(sl.id, song.id);
-	const updated = setlistsSignal.get().find((s) => s.id === sl.id)!;
-	expect(updated.songIds).toContain(song.id);
+	const updated = setlistsSignal.get().find((s) => s.id === sl.id);
+	expect(updated).toBeTruthy();
+	expect(updated?.songIds).toContain(song.id);
 });
 
 test("removeSongFromSetlist removes song id", () => {
@@ -115,8 +116,9 @@ test("removeSongFromSetlist removes song id", () => {
 	addSong(song);
 	addSongToSetlist(sl.id, song.id);
 	removeSongFromSetlist(sl.id, song.id);
-	const updated = setlistsSignal.get().find((s) => s.id === sl.id)!;
-	expect(updated.songIds).not.toContain(song.id);
+	const updated = setlistsSignal.get().find((s) => s.id === sl.id);
+	expect(updated).toBeTruthy();
+	expect(updated?.songIds).not.toContain(song.id);
 });
 
 test("deleteSong also removes from setlists", () => {
@@ -126,8 +128,9 @@ test("deleteSong also removes from setlists", () => {
 	addSong(song);
 	addSongToSetlist(sl.id, song.id);
 	deleteSong(song.id);
-	const updated = setlistsSignal.get().find((s) => s.id === sl.id)!;
-	expect(updated.songIds).not.toContain(song.id);
+	const updated = setlistsSignal.get().find((s) => s.id === sl.id);
+	expect(updated).toBeTruthy();
+	expect(updated?.songIds).not.toContain(song.id);
 });
 
 // ── ChordPro ──

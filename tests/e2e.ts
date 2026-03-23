@@ -154,7 +154,7 @@ async function run() {
 		await page.waitForSelector(".variation-selector");
 		const options = await page.$$(".variation-selector option");
 		if (options.length < 2) throw new Error("Not enough variation options");
-		await page.selectOption(".variation-selector", "1");
+		await page.selectOption(".variation-selector >> nth=0", { index: 1 });
 		// Chord should re-render
 		await page.waitForSelector(".chord");
 	});
@@ -549,6 +549,144 @@ async function run() {
 			if (panelRole !== "tabpanel")
 				throw new Error(`Panel role: expected "tabpanel", got "${panelRole}"`);
 		}
+	});
+
+	// ══════════════════════════════════════════════════════════
+	// NEW FEATURE E2E TESTS
+	// ══════════════════════════════════════════════════════════
+
+	// ── Test 29: Tone selector renders ──
+	await test("Tone selector shows all guitar tones", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tone-selector");
+		const options = await page.$$(".tone-selector option");
+		if (options.length < 4)
+			throw new Error(
+				`Expected at least 4 tone options, got ${options.length}`,
+			);
+	});
+
+	// ── Test 30: Nashville number toggle exists in progression panel ──
+	await test("Nashville number toggle exists in progression panel", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[2].click();
+		await page.waitForTimeout(300);
+		const found = await page.evaluate(() => {
+			const labels = document.querySelectorAll("label");
+			return Array.from(labels).some((l) =>
+				l.textContent?.includes("Nashville"),
+			);
+		});
+		if (!found)
+			throw new Error("Nashville number toggle not found in progression panel");
+	});
+
+	// ── Test 31: Fretboard note click shows chord finder chips ──
+	await test("Fretboard note click activates chord finding", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[1].click();
+		await page.waitForSelector(".fretboard-panel", { timeout: 3000 });
+		// Click a note on the fretboard SVG
+		const noteGroup = await page.$(".fb-note-group");
+		if (!noteGroup) throw new Error("No fretboard note groups found");
+		await noteGroup.click();
+		await page.waitForTimeout(500);
+		// Check if selected notes section appeared
+		const selectedDiv = await page.$(".selected-notes");
+		if (!selectedDiv)
+			throw new Error(
+				"Selected notes area not found after clicking fretboard note",
+			);
+	});
+
+	// ── Test 32: Practice end session button appears during practice ──
+	await test("Practice mode shows End Session button", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([
+					{ name: "C", variationIndex: 0 },
+					{ name: "G", variationIndex: 0 },
+				]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[5].click();
+		await page.waitForTimeout(300);
+		// Start Chord Quiz
+		const modeBtns = await page.$$(".tab-panel.active .instrument-btn");
+		if (modeBtns.length === 0) throw new Error("No mode buttons found");
+		await modeBtns[0].click();
+		await page.waitForTimeout(500);
+		// End Session button should be visible
+		const found = await page.evaluate(() => {
+			const btns = document.querySelectorAll(".tab-panel.active .btn");
+			return Array.from(btns).some((b) =>
+				b.textContent?.includes("End Session"),
+			);
+		});
+		if (!found) throw new Error("End Session button not shown during practice");
+	});
+
+	// ── Test 33: Songs tab can create a new song ──
+	await test("Songs tab new song form renders", async () => {
+		await page.goto(BASE_URL);
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[3].click();
+		await page.waitForTimeout(300);
+		// Click New Song button
+		const newSongBtn = await page.evaluate(() => {
+			const btns = document.querySelectorAll(".tab-panel.active .btn");
+			const btn = Array.from(btns).find((b) =>
+				b.textContent?.includes("New Song"),
+			);
+			if (btn) (btn as HTMLElement).click();
+			return !!btn;
+		});
+		if (!newSongBtn) throw new Error("New Song button not found");
+		await page.waitForTimeout(300);
+		// Song form should be visible
+		const inputs = await page.$$(".tab-panel.active input");
+		if (inputs.length === 0) throw new Error("No inputs found in song form");
+	});
+
+	// ── Test 34: QR code renders in share panel ──
+	await test("QR code renders in share panel", async () => {
+		await page.goto(BASE_URL);
+		await page.evaluate(() => {
+			localStorage.setItem(
+				"guitar-chords-state",
+				JSON.stringify([{ name: "C", variationIndex: 0 }]),
+			);
+		});
+		await page.reload();
+		await page.waitForSelector(".tab-bar");
+		const tabs = await page.$$(".tab-btn");
+		await tabs[6].click();
+		await page.waitForTimeout(300);
+		// Generate share URL first
+		await page.evaluate(() => {
+			const btns = document.querySelectorAll(".tab-panel.active .btn");
+			const btn = Array.from(btns).find(
+				(b) =>
+					b.textContent?.includes("Generate") ||
+					b.textContent?.includes("Copy"),
+			);
+			if (btn) (btn as HTMLElement).click();
+			return !!btn;
+		});
+		await page.waitForTimeout(300);
+		// QR code is SVG
+		const qrSvg = await page.$(".tab-panel.active svg");
+		if (!qrSvg) throw new Error("QR code SVG not found in share panel");
 	});
 
 	await teardown();
